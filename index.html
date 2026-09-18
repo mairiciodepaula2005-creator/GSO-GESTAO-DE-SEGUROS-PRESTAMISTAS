@@ -2327,7 +2327,13 @@
             console.log('[RTDB] Opções dinâmicas restauradas da nuvem.');
           }
         } else {
-          console.warn('[RTDB] Banco vazio — usando dados locais.');
+          // RTDB vazio — se há dados locais, envia tudo para a nuvem agora
+          console.warn('[RTDB] Banco vazio — sincronizando dados locais...');
+          if (clients.length > 0) {
+            await RTDB_REF.child('clients').set(clients);
+            toast('☁️ ' + clients.length + ' cliente(s) sincronizado(s) com o Firebase!');
+            console.log('[RTDB] Dados locais enviados para a nuvem. Total:', clients.length);
+          }
         }
 
         setSyncStatus('ok');
