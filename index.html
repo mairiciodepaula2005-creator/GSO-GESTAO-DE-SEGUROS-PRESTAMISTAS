@@ -755,13 +755,31 @@
             </div>
           </label>
 
-          <!-- Condicional: FALARÁ COMIGO NA DATA -->
+          <!-- Condicional: FALARÁ COMIGO NA DATA / RETORNO -->
           <div id="registerReturnDateBox" class="conditional-box" style="display:none;">
             <label style="color:#b45309;">
               📅 Data agendada para retorno / contato:
               <input id="returnDate" type="date" />
             </label>
             <small style="color:var(--muted)">O sistema alertará automaticamente quando o dia do contato estiver próximo ou atrasado, gerando também a mensagem pronta para envio no WhatsApp.</small>
+          </div>
+
+          <!-- Condicional: DATA EM QUE VOU RECEBER -->
+          <div id="registerReceiveDateBox" class="conditional-box" style="display:none;">
+            <label style="color:#0284c7;">
+              📅 Data em que vou receber:
+              <input id="receiveDate" type="date" />
+            </label>
+            <small style="color:var(--muted)">Selecione a data em que o valor do cliente está previsto para ser recebido.</small>
+          </div>
+
+          <!-- Condicional: CARÊNCIA VENCIMENTO -->
+          <div id="registerCarenciaBox" class="conditional-box" style="display:none;">
+            <label style="color:#475569;">
+              📅 Data que a carência vence:
+              <input id="carenciaDate" type="date" />
+            </label>
+            <small style="color:var(--muted)">Selecione a data em que o período de carência deste cliente chega ao fim.</small>
           </div>
 
           <!-- Condicional: FECHADO -->
@@ -960,6 +978,20 @@
           </label>
         </div>
 
+        <div id="editReceiveDateBox" class="conditional-box" style="display:none;">
+          <label style="color:#0284c7;">
+            📅 Data em que vou receber:
+            <input id="editReceiveDate" type="date" />
+          </label>
+        </div>
+
+        <div id="editCarenciaBox" class="conditional-box" style="display:none;">
+          <label style="color:#475569;">
+            📅 Data que a carência vence:
+            <input id="editCarenciaDate" type="date" />
+          </label>
+        </div>
+
         <div id="editClosedBox" class="conditional-box" style="display:none;">
           <div class="two">
             <label style="color:#15803d;">
@@ -1094,15 +1126,37 @@
       secretarias: ['SEMED', 'SEMSA', 'SEDUC', 'IMMU'],
       insurances: ['PRESTAMISTA', 'PRA VIDA INTEIRA BRADESCO', 'CAPITALIZAÇÃO', 'VIVA MAIS RESGATÁVEL', 'VIVA MULHER E RESIDENCIAL', 'SEGURO DE VIDA'],
       companies: ['INTEGRA', 'ANAPOLIS', 'PARTICULAR'],
-      statuses: ['AGUARDANDO RETORNO', 'FALARÁ COMIGO NA DATA', 'FECHADO', 'CARÊNCIA']
+      statuses: [
+        'NÃO FECHADO COM POSSIBILIDADE DE FECHAR',
+        'FECHADO PARCEIRO INTEGRA',
+        'FECHADO PARCEIRO INTEGRA RECEBER OUTRA SEMANA',
+        'FECHADO PARCEIRO ANAPOLIS',
+        'FECHADO PARCEIRO ANAPOLIS RECEBER OUTRA SEMANA',
+        'CLIENTE COM POSSIBILIDADE DE FECHAMENTO',
+        'CLIENTE COM PENDENCIA DE DOCUMENTO',
+        'CLIENTE COM SITUAÇÃO NA CAIXA',
+        'CLIENTE COM CARENCIA',
+        'AGUARDANDO RETORNO',
+        'FALARÁ COMIGO NA DATA',
+        'FECHADO'
+      ]
     };
 
     function getDynamicList(key) {
       const stored = localStorage.getItem('gsp_opt_' + key);
+      let list = [...DEFAULT_OPTIONS[key]];
       if (stored) {
-        try { return JSON.parse(stored); } catch (e) {}
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            DEFAULT_OPTIONS[key].forEach(opt => {
+              if (!parsed.includes(opt)) parsed.push(opt);
+            });
+            return parsed;
+          }
+        } catch (e) {}
       }
-      return [...DEFAULT_OPTIONS[key]];
+      return list;
     }
 
     function saveDynamicList(key, list) {
@@ -1492,29 +1546,94 @@
       setTimeout(() => e.classList.remove('show'), 3000);
     }
 
-    /* Controle de Status Condicional (Data de Retorno / Fechado) */
+    /* Renderizador de Badges de Status com Cores Personalizadas */
+    function renderStatusBadge(status) {
+      const st = String(status || 'AGUARDANDO RETORNO').trim();
+      const norm = normalize(st);
+      let style = '';
+
+      if (norm.includes('nao fechado') && norm.includes('possibilidade')) {
+        // NÃO FECHADO COM POSSIBILIDADE DE FECHAR - COR VERMELHA SALMÃO
+        style = 'background: #ffe4e6; color: #e11d48; border: 1px solid #fda4af;';
+      } else if (norm.includes('fechado') && norm.includes('integra') && norm.includes('outra semana')) {
+        // FECHADO PARCEIRO INTEGRA RECEBER OUTRA SEMANA - VERDE CLARO
+        style = 'background: #86efac; color: #14532d; border: 1px solid #4ade80;';
+      } else if (norm.includes('fechado') && norm.includes('integra')) {
+        // FECHADO PARCEIRO INTEGRA - VERDE ESCURO
+        style = 'background: #14532d; color: #ffffff; border: 1px solid #166534;';
+      } else if (norm.includes('fechado') && norm.includes('anapolis') && norm.includes('outra semana')) {
+        // FECHADO PARCEIRO ANAPOLIS RECEBER OUTRA SEMANA - LILAS CLARO
+        style = 'background: #e9d5ff; color: #6b21a8; border: 1px solid #c084fc;';
+      } else if (norm.includes('fechado') && norm.includes('anapolis')) {
+        // FECHADO PARCEIRO ANAPOLIS - LILAS ESCURO
+        style = 'background: #6b21a8; color: #ffffff; border: 1px solid #581c87;';
+      } else if (norm.includes('possibilidade de fechamento')) {
+        // CLIENTE COM POSSIBILIDADE DE FECHAMENTO - AMARELO
+        style = 'background: #fef08a; color: #854d0e; border: 1px solid #fde047;';
+      } else if (norm.includes('pendencia de documento') || norm.includes('pendencia')) {
+        // CLIENTE COM PENDENCIA DE DOCUMENTO - LARANJA
+        style = 'background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa;';
+      } else if (norm.includes('situacao na caixa') || norm.includes('caixa')) {
+        // CLIENTE COM SITUAÇÃO NA CAIXA - AZUL
+        style = 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;';
+      } else if (norm.includes('carencia')) {
+        // CLIENTE COM CARENCIA - CINZA
+        style = 'background: #e2e8f0; color: #334155; border: 1px solid #cbd5e1;';
+      } else if (norm.includes('falara')) {
+        style = 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;';
+      } else if (norm.includes('aguardando')) {
+        style = 'background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd;';
+      } else if (norm.includes('fechado')) {
+        style = 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;';
+      } else {
+        style = 'background: #e2e8f0; color: #334155; border: 1px solid #cbd5e1;';
+      }
+
+      return `<span class="badge" style="${style}">${escapeHtml(st)}</span>`;
+    }
+
+    /* Controle de Status Condicional (Data de Retorno / Recebimento / Carência / Fechado) */
     function handleStatusChange(mode) {
       const isEdit = mode === 'edit';
       const statusSelect = document.getElementById(isEdit ? 'editProcessStatus' : 'processStatus');
       const returnBox = document.getElementById(isEdit ? 'editReturnDateBox' : 'registerReturnDateBox');
+      const receiveBox = document.getElementById(isEdit ? 'editReceiveDateBox' : 'registerReceiveDateBox');
+      const carenciaBox = document.getElementById(isEdit ? 'editCarenciaBox' : 'registerCarenciaBox');
       const closedBox = document.getElementById(isEdit ? 'editClosedBox' : 'registerClosedBox');
       const closedDateInput = document.getElementById(isEdit ? 'editClosedDate' : 'closedDate');
 
-      const val = statusSelect.value;
+      const rawVal = statusSelect ? statusSelect.value : '';
+      const norm = normalize(rawVal || '');
 
-      if (val === 'FALARÁ COMIGO NA DATA') {
-        returnBox.style.display = 'grid';
+      // 1. Data de retorno agendada / contato
+      if (norm.includes('falara') || norm.includes('retorno') || norm.includes('possibilidade')) {
+        if (returnBox) returnBox.style.display = 'grid';
       } else {
-        returnBox.style.display = 'none';
+        if (returnBox) returnBox.style.display = 'none';
       }
 
-      if (val === 'FECHADO') {
-        closedBox.style.display = 'grid';
-        if (!closedDateInput.value) {
+      // 2. Data em que vou receber (Calendário ao editar status ou quando relevante)
+      if (isEdit || norm.includes('fechado') || norm.includes('receber') || norm.includes('semana') || norm.includes('possibilidade')) {
+        if (receiveBox) receiveBox.style.display = 'grid';
+      } else {
+        if (receiveBox) receiveBox.style.display = 'none';
+      }
+
+      // 3. Data em que a carência vence
+      if (norm.includes('carencia')) {
+        if (carenciaBox) carenciaBox.style.display = 'grid';
+      } else {
+        if (carenciaBox) carenciaBox.style.display = 'none';
+      }
+
+      // 4. Fechamento
+      if (norm.includes('fechado') && !norm.includes('nao fechado')) {
+        if (closedBox) closedBox.style.display = 'grid';
+        if (closedDateInput && !closedDateInput.value) {
           closedDateInput.value = getTodayISO();
         }
       } else {
-        closedBox.style.display = 'none';
+        if (closedBox) closedBox.style.display = 'none';
       }
     }
 
@@ -1567,18 +1686,23 @@
         return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchTodayAlert;
       });
 
+      // Helper para identificar se o status é FECHADO (para dashboard)
+      const isClosedStatus = st => {
+        const norm = normalize(st || '');
+        return norm.includes('fechado') && !norm.includes('nao fechado');
+      };
+
       // Cálculos gerais do dashboard
-      // Clientes FECHADO: valor total × % conta integralmente como recebido
       const totalInsuranceSum = clients.reduce((s, c) => s + n(c.total), 0);
 
       const paidSum = clients.reduce((s, c) => {
         const expected = n(c.total) * (n(c.percent) / 100);
-        if (c.processStatus === 'FECHADO') return s + expected; // FECHADO = já recebido
+        if (isClosedStatus(c.processStatus)) return s + expected; // FECHADO = já recebido
         return s + n(c.paid);
       }, 0);
 
       const toReceiveSum = clients.reduce((s, c) => {
-        if (c.processStatus === 'FECHADO') return s; // FECHADO já está no recebido
+        if (isClosedStatus(c.processStatus)) return s; // FECHADO já está no recebido
         const expected = n(c.total) * (n(c.percent) / 100);
         return s + Math.max(0, expected - n(c.paid));
       }, 0);
@@ -1600,21 +1724,18 @@
         const pending = Math.max(0, expected - n(c.paid));
         const processStatus = c.processStatus || 'AGUARDANDO RETORNO';
 
-        let statusClass = 'badge-status';
-        if (processStatus === 'FECHADO') statusClass = 'badge-fechado';
-        else if (processStatus === 'AGUARDANDO RETORNO') statusClass = 'badge-aguardando';
-        else if (processStatus === 'FALARÁ COMIGO NA DATA') statusClass = 'badge-falara';
-        else if (processStatus === 'CARÊNCIA') statusClass = 'badge-carencia';
-
-        const returnAnalysis = (processStatus === 'FALARÁ COMIGO NA DATA' && c.returnDate) ? analyzeReturnDate(c.returnDate) : null;
+        const returnAnalysis = c.returnDate ? analyzeReturnDate(c.returnDate) : null;
         const returnHtml = returnAnalysis ? `<div class="return-badge ${returnAnalysis.class}">${returnAnalysis.label}</div>` : '';
+
+        const receiveHtml = c.receiveDate ? `<small style="display:block; color:#0284c7; margin-top:3px; font-weight:600;">📅 Receber: ${formatDateBR(c.receiveDate)}</small>` : '';
+        const carenciaHtml = c.carenciaDate ? `<small style="display:block; color:#475569; margin-top:3px; font-weight:600;">⏳ Carência vence: ${formatDateBR(c.carenciaDate)}</small>` : '';
 
         const isSharedTag = c.isShared === 'Sim' ? '<span class="shared-tag">Compartilhado</span>' : '';
         const clientBank = c.bank || (c.banks && c.banks[0]) || '';
         const bankFormatted = clientBank ? escapeHtml(clientBank) : '<span style="color:#94a3b8">Não informado</span>';
 
         const reminderMsg = getReminderMessage(c);
-        const reminderBtn = (processStatus === 'FALARÁ COMIGO NA DATA') ? `
+        const reminderBtn = (normalize(processStatus).includes('falara') || c.returnDate) ? `
           <a class="whatsapp-reminder-btn" href="${whatsappUrl(c.number, reminderMsg)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Enviar mensagem pronta de retorno">
             📅 Lembrete WhatsApp
           </a>
@@ -1639,8 +1760,10 @@
               <small style="color:#64748b">🏦 ${bankFormatted}</small>
             </td>
             <td>
-              <span class="badge ${statusClass}">${escapeHtml(processStatus)}</span>
+              ${renderStatusBadge(processStatus)}
               ${returnHtml}
+              ${receiveHtml}
+              ${carenciaHtml}
             </td>
             <td><strong style="color:var(--blue)">${money(n(c.total))}</strong></td>
             <td>
@@ -1676,7 +1799,9 @@
 
       const data = [
         ['Status do Processo', c.processStatus || 'AGUARDANDO RETORNO'],
-        ['Data de Retorno', returnText],
+        ['Data em que vai receber', c.receiveDate ? formatDateBR(c.receiveDate) : 'Não informada'],
+        ['Vencimento da Carência', c.carenciaDate ? formatDateBR(c.carenciaDate) : 'Não informada'],
+        ['Data de Retorno / Contato', returnText],
         ['Data de Fechamento', c.closedDate ? formatDateBR(c.closedDate) : 'Não fechado'],
         ['Foi Pago Antes?', c.paidBefore || 'Não'],
         ['Consultor', c.consultant || 'Não informado'],
@@ -1709,7 +1834,7 @@
       document.getElementById('detailWhatsapp').href = whatsappUrl(c.number);
 
       const reminderBtnModal = document.getElementById('detailWhatsappReminder');
-      if (c.processStatus === 'FALARÁ COMIGO NA DATA') {
+      if (normalize(c.processStatus || '').includes('falara') || c.returnDate) {
         reminderBtnModal.style.display = 'inline-flex';
         reminderBtnModal.href = whatsappUrl(c.number, getReminderMessage(c));
       } else {
@@ -1751,6 +1876,8 @@
 
       document.getElementById('editProcessStatus').value = c.processStatus || 'AGUARDANDO RETORNO';
       document.getElementById('editReturnDate').value = c.returnDate || '';
+      document.getElementById('editReceiveDate').value = c.receiveDate || '';
+      document.getElementById('editCarenciaDate').value = c.carenciaDate || '';
       document.getElementById('editClosedDate').value = c.closedDate || '';
       document.getElementById('editPaidBefore').value = c.paidBefore || 'Não';
 
@@ -1786,8 +1913,12 @@
       if (!c) return;
 
       const pStatus = val('editProcessStatus');
-      const cDate = pStatus === 'FECHADO' ? (val('editClosedDate') || getTodayISO()) : '';
-      const rDate = pStatus === 'FALARÁ COMIGO NA DATA' ? val('editReturnDate') : '';
+      const norm = normalize(pStatus);
+      const isFechado = norm.includes('fechado') && !norm.includes('nao fechado');
+      const cDate = isFechado ? (val('editClosedDate') || getTodayISO()) : '';
+      const rDate = val('editReturnDate');
+      const recDate = val('editReceiveDate');
+      const carDate = val('editCarenciaDate');
       const isSharedVal = val('editIsShared');
 
       Object.assign(c, {
@@ -1804,8 +1935,10 @@
         insuranceType: val('editInsuranceType'),
         processStatus: pStatus,
         returnDate: rDate,
+        receiveDate: recDate,
+        carenciaDate: carDate,
         closedDate: cDate,
-        paidBefore: pStatus === 'FECHADO' ? val('editPaidBefore') : 'Não',
+        paidBefore: isFechado ? val('editPaidBefore') : 'Não',
         bank: selectedBank.edit || val('editBankSearch').trim(),
         total: n(val('editTotal')),
         percent: n(val('editPercent')),
@@ -1858,6 +1991,10 @@
       document.getElementById('partnerName').value = 'Nenhum';
       document.getElementById('partnerCommission').value = 'Nenhuma';
       document.getElementById('isShared').value = 'Não';
+      if (document.getElementById('returnDate')) document.getElementById('returnDate').value = '';
+      if (document.getElementById('receiveDate')) document.getElementById('receiveDate').value = '';
+      if (document.getElementById('carenciaDate')) document.getElementById('carenciaDate').value = '';
+      if (document.getElementById('closedDate')) document.getElementById('closedDate').value = '';
       toggleSharedFields('register');
       handleStatusChange('register');
       updateCalculatedReceive();
@@ -1867,8 +2004,12 @@
     document.getElementById('clientForm').addEventListener('submit', e => {
       e.preventDefault();
       const pStatus = val('processStatus') || 'AGUARDANDO RETORNO';
-      const cDate = pStatus === 'FECHADO' ? (val('closedDate') || getTodayISO()) : '';
-      const rDate = pStatus === 'FALARÁ COMIGO NA DATA' ? val('returnDate') : '';
+      const norm = normalize(pStatus);
+      const isFechado = norm.includes('fechado') && !norm.includes('nao fechado');
+      const cDate = isFechado ? (val('closedDate') || getTodayISO()) : '';
+      const rDate = val('returnDate');
+      const recDate = val('receiveDate');
+      const carDate = val('carenciaDate');
       const isSharedVal = val('isShared');
 
       const newClient = {
@@ -1885,8 +2026,10 @@
         insuranceType: val('insuranceType'),
         processStatus: pStatus,
         returnDate: rDate,
+        receiveDate: recDate,
+        carenciaDate: carDate,
         closedDate: cDate,
-        paidBefore: pStatus === 'FECHADO' ? val('paidBefore') : 'Não',
+        paidBefore: isFechado ? val('paidBefore') : 'Não',
         bank: selectedBank.register || val('bankSearch').trim(),
         total: n(val('total')),
         percent: n(val('percent')),
@@ -2024,6 +2167,8 @@
             insuranceType: String(findColumnValue(r, ['tipo de seguro', 'seguro', 'tipo seguro'], /seguro/i)).trim() || 'PRESTAMISTA',
             processStatus: String(findColumnValue(r, ['status', 'status do processo', 'situacao', 'situação'], /status|situac/i)).trim() || 'AGUARDANDO RETORNO',
             returnDate: String(findColumnValue(r, ['data de retorno', 'retorno', 'data retorno'], /retorno/i)).trim(),
+            receiveDate: String(findColumnValue(r, ['data que vai receber', 'data em que vai receber', 'data de recebimento', 'data recebimento', 'receber em', 'data receber'], /receb|vai.*receb/i)).trim(),
+            carenciaDate: String(findColumnValue(r, ['vencimento da carencia', 'data que a carencia vence', 'vencimento carencia', 'data carencia', 'carencia vence'], /carencia/i)).trim(),
             closedDate: String(findColumnValue(r, ['data de fechamento', 'fechamento'], /fechamento/i)).trim(),
             paidBefore: String(findColumnValue(r, ['pago antes', 'foi pago antes'], /pago.*antes/i)).trim() || 'Não',
             bank: singleBank,
@@ -2077,6 +2222,8 @@
           'Banco Relacionado': c.bank || (c.banks && c.banks[0]) || '',
           'Status do Processo': c.processStatus || 'AGUARDANDO RETORNO',
           'Data de Retorno': c.returnDate || '',
+          'Data em que vai Receber': c.receiveDate || '',
+          'Vencimento da Carência': c.carenciaDate || '',
           'Data de Fechamento': c.closedDate || '',
           'Foi Pago Antes': c.paidBefore || 'Não',
           'Valor Total do Seguro': c.total,
