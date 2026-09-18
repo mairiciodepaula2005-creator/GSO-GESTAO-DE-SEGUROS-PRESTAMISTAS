@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GSP — Gestão de Seguros Prestamista</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Firebase SDKs (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics-compat.js"></script>
   <style>
     :root {
       --ink: #142332;
@@ -821,6 +825,7 @@
           <label class="btn-outline file-label" for="backupInput" style="cursor:pointer;">📂 Restaurar</label>
           <input id="backupInput" type="file" accept=".json" onchange="importBackup(event)" />
           <button type="button" class="btn-outline danger-btn" onclick="openDeleteModal()" title="Escolher qual atualização ou conjunto de dados deseja excluir">🗑️ Excluir Dados...</button>
+          <span id="syncStatus" style="font-size:0.8rem; font-weight:600; margin-left:8px;">☁️ Conectando...</span>
         </div>
 
         <p class="hint">
@@ -1048,8 +1053,34 @@
   <div class="notice" id="notice"></div>
 
   <script>
+    /* ── Firebase Realtime Database ────────────────────────────── */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBWcUXUAnzoJTZlXxmtNXY-hy0_7F63dE0",
+      authDomain: "gsp---gerenciador-de-seg.firebaseapp.com",
+      databaseURL: "https://gsp---gerenciador-de-seg-default-rtdb.firebaseio.com",
+      projectId: "gsp---gerenciador-de-seg",
+      storageBucket: "gsp---gerenciador-de-seg.firebasestorage.app",
+      messagingSenderId: "1027554719043",
+      appId: "1:1027554719043:web:f7a7ba970f4215ffe12bf6",
+      measurementId: "G-EPE63WNL3K"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    firebase.analytics();
+    const RTDB_REF = db.ref('gsp');   // raiz: /gsp/
+
+    /* Indicador de sincronização */
+    function setSyncStatus(status) {
+      const el = document.getElementById('syncStatus');
+      if (!el) return;
+      if (status === 'saving') { el.textContent = '☁️ Salvando...';               el.style.color = '#f59e0b'; }
+      else if (status === 'ok')  { el.textContent = '✅ Sincronizado';             el.style.color = '#22c55e'; }
+      else if (status === 'err') { el.textContent = '⚠️ Sem conexão (local)';     el.style.color = '#ef4444'; }
+    }
+    /* ──────────────────────────────────────────────────────────── */
+
     const KEY = 'gsp-client-history-v1';
-    let clients = JSON.parse(localStorage.getItem(KEY) || '[]');
+    let clients = JSON.parse(localStorage.getItem(KEY) || '[]'); // fallback offline
     let openClientIndex = -1;
     let onlyTodayFilter = false;
     let previousStateBeforeImport = null;
@@ -1076,6 +1107,9 @@
 
     function saveDynamicList(key, list) {
       localStorage.setItem('gsp_opt_' + key, JSON.stringify(list));
+      // Sincroniza opções no Realtime Database
+      RTDB_REF.child('options').child(key).set(list)
+        .catch(err => console.error('[RTDB] Erro ao salvar opção "' + key + '":', err));
     }
 
     function populateDropdowns() {
@@ -1436,7 +1470,19 @@
     }
 
     function persist() {
+      // 1. Cache local (funciona offline)
       localStorage.setItem(KEY, JSON.stringify(clients));
+      // 2. Nuvem — Realtime Database
+      setSyncStatus('saving');
+      RTDB_REF.child('clients').set(clients)
+        .then(() => {
+          setSyncStatus('ok');
+          console.log('[RTDB] Clientes salvos com sucesso. Total:', clients.length);
+        })
+        .catch(err => {
+          setSyncStatus('err');
+          console.error('[RTDB] Erro ao salvar clientes:', err.code, err.message);
+        });
     }
 
     function toast(t) {
@@ -2250,11 +2296,50 @@
       toast(`✅ ${removed} cliente(s) excluído(s) com sucesso.`);
     }
 
-    /* Inicialização */
-    populateDropdowns();
-    toggleSharedFields('register');
-    document.getElementById('date').textContent = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(new Date());
-    render();
+    /* Inicialização — carrega do Realtime Database, fallback para localStorage */
+    async function init() {
+      populateDropdowns();
+      toggleSharedFields('register');
+      document.getElementById('date').textContent = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(new Date());
+
+      try {
+        setSyncStatus('saving');
+        const snapshot = await RTDB_REF.once('value');
+        const data = snapshot.val();
+        console.log('[RTDB] Dados carregados:', data);
+
+        if (data) {
+          // Restaura clientes da nuvem
+          if (Array.isArray(data.clients) && data.clients.length > 0) {
+            clients = data.clients;
+            localStorage.setItem(KEY, JSON.stringify(clients));
+            console.log('[RTDB] Clientes restaurados da nuvem. Total:', clients.length);
+          }
+
+          // Restaura listas dinâmicas da nuvem
+          if (data.options) {
+            Object.keys(data.options).forEach(key => {
+              if (DEFAULT_OPTIONS[key] && Array.isArray(data.options[key])) {
+                localStorage.setItem('gsp_opt_' + key, JSON.stringify(data.options[key]));
+              }
+            });
+            populateDropdowns();
+            console.log('[RTDB] Opções dinâmicas restauradas da nuvem.');
+          }
+        } else {
+          console.warn('[RTDB] Banco vazio — usando dados locais.');
+        }
+
+        setSyncStatus('ok');
+      } catch (err) {
+        setSyncStatus('err');
+        console.error('[RTDB] Falha ao carregar dados:', err.code, err.message);
+      }
+
+      render();
+    }
+
+    init();
   </script>
 </body>
 </html>
