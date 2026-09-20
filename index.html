@@ -1983,6 +1983,12 @@
       return `Olá, ${name}! Tudo bem?\n\nAqui é da equipe de gestão de resgate de seguros. Conforme combinamos nosso retorno para ${dateFmt}, estou entrando em contato para darmos continuidade ao seu processo. Podemos falar agora?`;
     }
 
+    /* Helper global: identifica se um status é FECHADO */
+    function isClosedStatus(st) {
+      const norm = normalize(st || '');
+      return norm.includes('fechado') && !norm.includes('nao fechado');
+    }
+
     /* Central de Lembretes - Envio de Mensagens WhatsApp no Dia Marcado */
     function renderReminders() {
       const listEl = document.getElementById('reminderList');
@@ -2222,11 +2228,6 @@
         periodBadge.textContent = labelText;
       }
 
-      // Helper para identificar se o status é FECHADO (para dashboard)
-      const isClosedStatus = st => {
-        const norm = normalize(st || '');
-        return norm.includes('fechado') && !norm.includes('nao fechado');
-      };
 
       // 1. Filtro dos clientes para Métricas de Lucros no Dashboard (Dia/Semana/Mês/Ano)
       const dashFiltered = clients.filter(c => {
@@ -3098,45 +3099,43 @@
       try {
         setSyncStatus('saving');
 
-        // 1. Escuta em tempo real qualquer alteração no Firebase
-        RTDB_REF.child('clients').on('value', snapshot => {
-          const val = snapshot.val();
-          if (val) {
-            if (Array.isArray(val)) {
-              clients = val;
-            } else if (typeof val === 'object') {
-              clients = Object.values(val);
-            }
+        // 1. Lê dados de clientes do Firebase (uma única vez)
+        const clientsSnap = await RTDB_REF.child('clients').once('value');
+        const rawClients = clientsSnap.val();
+
+        if (rawClients) {
+          const cloudClients = Array.isArray(rawClients) ? rawClients : Object.values(rawClients);
+          if (cloudClients.length > 0) {
+            clients = cloudClients;
             localStorage.setItem(KEY, JSON.stringify(clients));
-            console.log('[RTDB] Clientes atualizados da nuvem. Total:', clients.length);
+            console.log('[RTDB] Clientes carregados da nuvem. Total:', clients.length);
             render();
-          } else if (clients.length > 0) {
-            // Se o Firebase estiver vazio e houver clientes locais, envia para a nuvem
-            RTDB_REF.child('clients').set(clients);
           }
-          setSyncStatus('ok');
-        }, err => {
-          setSyncStatus('err');
-          console.error('[RTDB] Erro na sincronização:', err);
-        });
+        } else if (clients.length > 0) {
+          // Firebase vazio mas temos dados locais — envia para a nuvem
+          await RTDB_REF.child('clients').set(clients);
+          console.log('[RTDB] Dados locais enviados para a nuvem. Total:', clients.length);
+        }
 
         // 2. Carrega opções dinâmicas
-        const snapshot = await RTDB_REF.once('value');
-        const data = snapshot.val();
-        if (data && data.options) {
-          Object.keys(data.options).forEach(key => {
-            if (DEFAULT_OPTIONS[key] && Array.isArray(data.options[key])) {
-              localStorage.setItem('gsp_opt_' + key, JSON.stringify(data.options[key]));
+        const optionsSnap = await RTDB_REF.child('options').once('value');
+        const optData = optionsSnap.val();
+        if (optData) {
+          Object.keys(optData).forEach(key => {
+            if (DEFAULT_OPTIONS[key] && Array.isArray(optData[key])) {
+              localStorage.setItem('gsp_opt_' + key, JSON.stringify(optData[key]));
             }
           });
           populateDropdowns();
         }
+
+        setSyncStatus('ok');
       } catch (err) {
         setSyncStatus('err');
         console.error('[RTDB] Falha ao carregar dados:', err.code, err.message);
+        // Mesmo com erro, garante que os dados locais são mostrados
+        render();
       }
-
-      render();
 
       // Alerta automático de agendamentos no dia marcado / atrasados
       setTimeout(() => {
