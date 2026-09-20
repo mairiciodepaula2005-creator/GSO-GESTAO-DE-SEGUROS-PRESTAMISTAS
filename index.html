@@ -2544,7 +2544,7 @@
       for (const pk of priorityKeys) {
         const found = rowKeys.find(k => normalize(k).includes(normalize(pk)));
         if (found && row[found] !== undefined && String(row[found]).trim() !== '') {
-          if (excludePattern && excludePattern.test(normalize(k))) continue;
+          if (excludePattern && excludePattern.test(normalize(found))) continue;
           return row[found];
         }
       }
