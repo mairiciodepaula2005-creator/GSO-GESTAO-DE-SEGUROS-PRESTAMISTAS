@@ -709,12 +709,8 @@
           <strong id="toReceive">R$ 0,00</strong>
         </article>
         <article class="metric received">
-          <div class="label">Lucro / Comissão Recebida</div>
+          <div class="label">Lucro / Comissão Fechada</div>
           <strong id="received">R$ 0,00</strong>
-        </article>
-        <article class="metric" style="border-left: 4px solid #10b981;">
-          <div class="label" style="color: #047857;">Lucro Total Estimado</div>
-          <strong id="totalProfit" style="color: #047857;">R$ 0,00</strong>
         </article>
       </section>
 
@@ -2237,28 +2233,31 @@
       // Cálculos gerais do dashboard com base no período filtrado
       const totalInsuranceSum = dashFiltered.reduce((s, c) => s + n(c.total), 0);
 
+      // Apenas clientes com status FECHADO têm lucros/comissões contabilizados
       const paidSum = dashFiltered.reduce((s, c) => {
+        if (!isClosedStatus(c.processStatus)) return s;
         const expected = n(c.total) * (n(c.percent) / 100);
-        if (isClosedStatus(c.processStatus)) return s + expected;
-        return s + n(c.paid);
+        const norm = normalize(c.processStatus || '');
+        if (norm.includes('outra semana')) {
+          return s + n(c.paid);
+        }
+        return s + (n(c.paid) > 0 ? n(c.paid) : expected);
       }, 0);
 
       const toReceiveSum = dashFiltered.reduce((s, c) => {
-        if (isClosedStatus(c.processStatus)) return s;
+        if (!isClosedStatus(c.processStatus)) return s;
         const expected = n(c.total) * (n(c.percent) / 100);
-        return s + Math.max(0, expected - n(c.paid));
-      }, 0);
-
-      const totalProfitSum = dashFiltered.reduce((s, c) => {
-        return s + (n(c.total) * (n(c.percent) / 100));
+        const norm = normalize(c.processStatus || '');
+        if (norm.includes('outra semana')) {
+          return s + Math.max(0, expected - n(c.paid));
+        }
+        return s + Math.max(0, expected - (n(c.paid) > 0 ? n(c.paid) : expected));
       }, 0);
 
       document.getElementById('totalClients').textContent = dashFiltered.length;
       document.getElementById('totalInsurance').textContent = money(totalInsuranceSum);
       document.getElementById('toReceive').textContent = money(toReceiveSum);
       document.getElementById('received').textContent = money(paidSum);
-      const totalProfitEl = document.getElementById('totalProfit');
-      if (totalProfitEl) totalProfitEl.textContent = money(totalProfitSum);
 
       // Renderiza a Central de Lembretes dos Dias Marcados
       renderReminders();
