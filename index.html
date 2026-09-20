@@ -623,6 +623,41 @@
             </span>
           </div>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <select id="dashDayFilter" onchange="syncDayFilter('dashboard'); render();" style="width: auto; min-width: 130px; font-weight: 600;">
+              <option value="">Todos os Dias</option>
+              <option value="01">Dia 01</option>
+              <option value="02">Dia 02</option>
+              <option value="03">Dia 03</option>
+              <option value="04">Dia 04</option>
+              <option value="05">Dia 05</option>
+              <option value="06">Dia 06</option>
+              <option value="07">Dia 07</option>
+              <option value="08">Dia 08</option>
+              <option value="09">Dia 09</option>
+              <option value="10">Dia 10</option>
+              <option value="11">Dia 11</option>
+              <option value="12">Dia 12</option>
+              <option value="13">Dia 13</option>
+              <option value="14">Dia 14</option>
+              <option value="15">Dia 15</option>
+              <option value="16">Dia 16</option>
+              <option value="17">Dia 17</option>
+              <option value="18">Dia 18</option>
+              <option value="19">Dia 19</option>
+              <option value="20">Dia 20</option>
+              <option value="21">Dia 21</option>
+              <option value="22">Dia 22</option>
+              <option value="23">Dia 23</option>
+              <option value="24">Dia 24</option>
+              <option value="25">Dia 25</option>
+              <option value="26">Dia 26</option>
+              <option value="27">Dia 27</option>
+              <option value="28">Dia 28</option>
+              <option value="29">Dia 29</option>
+              <option value="30">Dia 30</option>
+              <option value="31">Dia 31</option>
+            </select>
+
             <select id="dashMonthFilter" onchange="syncMonthFilter('dashboard'); render();" style="width: auto; min-width: 150px; font-weight: 600;">
               <option value="">Todos os Meses</option>
               <option value="01">Janeiro</option>
@@ -892,6 +927,41 @@
 
           <select id="insuranceFilter" onchange="render()">
             <option value="">Todos os tipos de seguro</option>
+          </select>
+
+          <select id="dayFilter" onchange="syncDayFilter('history'); render();">
+            <option value="">Todos os dias</option>
+            <option value="01">Dia 01</option>
+            <option value="02">Dia 02</option>
+            <option value="03">Dia 03</option>
+            <option value="04">Dia 04</option>
+            <option value="05">Dia 05</option>
+            <option value="06">Dia 06</option>
+            <option value="07">Dia 07</option>
+            <option value="08">Dia 08</option>
+            <option value="09">Dia 09</option>
+            <option value="10">Dia 10</option>
+            <option value="11">Dia 11</option>
+            <option value="12">Dia 12</option>
+            <option value="13">Dia 13</option>
+            <option value="14">Dia 14</option>
+            <option value="15">Dia 15</option>
+            <option value="16">Dia 16</option>
+            <option value="17">Dia 17</option>
+            <option value="18">Dia 18</option>
+            <option value="19">Dia 19</option>
+            <option value="20">Dia 20</option>
+            <option value="21">Dia 21</option>
+            <option value="22">Dia 22</option>
+            <option value="23">Dia 23</option>
+            <option value="24">Dia 24</option>
+            <option value="25">Dia 25</option>
+            <option value="26">Dia 26</option>
+            <option value="27">Dia 27</option>
+            <option value="28">Dia 28</option>
+            <option value="29">Dia 29</option>
+            <option value="30">Dia 30</option>
+            <option value="31">Dia 31</option>
           </select>
 
           <select id="monthFilter" onchange="syncMonthFilter('history'); render();">
@@ -1616,7 +1686,113 @@
       '09': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro'
     };
 
+    /* Extrator Inteligente de Data Combinando Coluna "DATA" + Nome da Aba (Ano/Mês) */
+    function parseDateWithSheetContext(rawDateVal, sheetName = '', sheetIndex = 0, totalSheets = 1) {
+      if (typeof rawDateVal === 'number' || (/^\d{5}$/.test(String(rawDateVal || '').trim()))) {
+        const num = Number(rawDateVal);
+        if (num > 20000 && num < 80000) {
+          const jsDate = new Date(Math.round((num - (25567 + 2)) * 86400 * 1000));
+          if (!isNaN(jsDate.getTime())) {
+            const y = jsDate.getUTCFullYear();
+            const m = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
+            const d = String(jsDate.getUTCDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          }
+        }
+      }
+
+      let year = '';
+      let sheetMonth = '';
+
+      // 1. Identifica Ano pelo Nome da Aba (ex.: "SETEMBRO 2025", "JAN 2026", "OUT 25")
+      if (sheetName) {
+        const y4 = sheetName.match(/\b(20\d{2})\b/);
+        if (y4) {
+          year = y4[1];
+        } else {
+          const y2 = sheetName.match(/\b([2-9]\d)\b/);
+          if (y2) year = '20' + y2[1];
+        }
+      }
+      // Se não houver ano explícito no nome da aba: as primeiras abas são de 2025 e a segunda/última de 2026
+      if (!year) {
+        if (totalSheets > 1) {
+          year = (sheetIndex < totalSheets - 1) ? '2025' : '2026';
+        } else {
+          year = '2025';
+        }
+      }
+
+      // 2. Identifica Mês pelo Nome da Aba se a data na célula for apenas o dia
+      if (sheetName) {
+        const normS = normalize(sheetName);
+        const monthsMap = {
+          'janeiro': '01', 'jan': '01',
+          'fevereiro': '02', 'fev': '02',
+          'marco': '03', 'mar': '03',
+          'abril': '04', 'abr': '04',
+          'maio': '05', 'mai': '05',
+          'junho': '06', 'jun': '06',
+          'julho': '07', 'jul': '07',
+          'agosto': '08', 'ago': '08',
+          'setembro': '09', 'set': '09',
+          'outubro': '10', 'out': '10',
+          'novembro': '11', 'nov': '11',
+          'dezembro': '12', 'dez': '12'
+        };
+        for (const [mKey, mVal] of Object.entries(monthsMap)) {
+          if (normS.includes(mKey)) {
+            sheetMonth = mVal;
+            break;
+          }
+        }
+      }
+
+      const str = String(rawDateVal || '').trim();
+      if (!str) {
+        if (sheetMonth && year) return `${year}-${sheetMonth}-01`;
+        return '';
+      }
+
+      // Se já estiver em formato YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+
+      // Se estiver em formato DD/MM/YYYY ou DD-MM-YYYY
+      const fullMatch = str.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})/);
+      if (fullMatch) {
+        const day = fullMatch[1].padStart(2, '0');
+        const month = fullMatch[2].padStart(2, '0');
+        let y = fullMatch[3];
+        if (y.length === 2) y = '20' + y;
+        return `${y}-${month}-${day}`;
+      }
+
+      // Se estiver em formato DD/MM (dia/mês)
+      const dmMatch = str.match(/^(\d{1,2})[\/\.-](\d{1,2})/);
+      if (dmMatch) {
+        const day = dmMatch[1].padStart(2, '0');
+        const month = dmMatch[2].padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+
+      // Se for apenas o dia em número (ex.: "15" ou "5")
+      const dayOnlyMatch = str.match(/^(\d{1,2})$/);
+      if (dayOnlyMatch && sheetMonth) {
+        const day = dayOnlyMatch[1].padStart(2, '0');
+        return `${year}-${sheetMonth}-${day}`;
+      }
+
+      return '';
+    }
+
     /* Sincronização dos Filtros de Data entre Dashboard e Histórico */
+    function syncDayFilter(source) {
+      const isDash = source === 'dashboard';
+      const sourceVal = val(isDash ? 'dashDayFilter' : 'dayFilter');
+      const targetEl = document.getElementById(isDash ? 'dayFilter' : 'dashDayFilter');
+      if (targetEl) targetEl.value = sourceVal;
+    }
+
     function syncMonthFilter(source) {
       const isDash = source === 'dashboard';
       const sourceVal = val(isDash ? 'dashMonthFilter' : 'monthFilter');
@@ -1632,7 +1808,7 @@
     }
 
     function resetDashDateFilters() {
-      ['dashMonthFilter', 'monthFilter', 'dashYearFilter', 'yearFilter'].forEach(id => {
+      ['dashDayFilter', 'dayFilter', 'dashMonthFilter', 'monthFilter', 'dashYearFilter', 'yearFilter'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
@@ -1901,6 +2077,7 @@
       const secretariaF = val('secretariaFilter');
       const insuranceF = val('insuranceFilter');
 
+      const dayF = val('dashDayFilter') || val('dayFilter');
       const monthF = val('dashMonthFilter') || val('monthFilter');
       const yearF = val('dashYearFilter') || val('yearFilter');
 
@@ -1908,9 +2085,11 @@
       const periodBadge = document.getElementById('dashPeriodBadge');
       if (periodBadge) {
         let labelText = 'Exibindo lucros de: ';
-        if (monthF && yearF) labelText += `${monthNames[monthF]} / ${yearF}`;
-        else if (monthF) labelText += `${monthNames[monthF]} (Todos os Anos)`;
-        else if (yearF) labelText += `Ano ${yearF} (Todos os Meses)`;
+        const parts = [];
+        if (dayF) parts.push(`Dia ${dayF}`);
+        if (monthF) parts.push(monthNames[monthF]);
+        if (yearF) parts.push(`Ano ${yearF}`);
+        if (parts.length > 0) labelText += parts.join(' / ');
         else labelText += 'Todo o Histórico (Geral)';
         periodBadge.textContent = labelText;
       }
@@ -1921,13 +2100,15 @@
         return norm.includes('fechado') && !norm.includes('nao fechado');
       };
 
-      // 1. Filtro dos clientes para Métricas de Lucros no Dashboard (Mês/Ano)
+      // 1. Filtro dos clientes para Métricas de Lucros no Dashboard (Dia/Mês/Ano)
       const dashFiltered = clients.filter(c => {
-        if (!monthF && !yearF) return true;
+        if (!dayF && !monthF && !yearF) return true;
         const dStr = getClientFinancialDate(c);
         if (!dStr) return false;
+        const d = dStr.slice(8, 10);
         const m = dStr.slice(5, 7);
         const y = dStr.slice(0, 4);
+        if (dayF && d !== dayF) return false;
         if (monthF && m !== monthF) return false;
         if (yearF && y !== yearF) return false;
         return true;
@@ -1974,8 +2155,10 @@
         const matchInsurance = !insuranceF || (c.insuranceType || '') === insuranceF;
 
         const dStr = getClientFinancialDate(c);
+        const d = dStr ? dStr.slice(8, 10) : '';
         const m = dStr ? dStr.slice(5, 7) : '';
         const y = dStr ? dStr.slice(0, 4) : '';
+        const matchDay = !dayF || d === dayF;
         const matchMonth = !monthF || m === monthF;
         const matchYear = !yearF || y === yearF;
 
@@ -1989,7 +2172,7 @@
           }
         }
 
-        return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchMonth && matchYear && matchTodayAlert;
+        return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchDay && matchMonth && matchYear && matchTodayAlert;
       });
 
       const rowsEl = document.getElementById('rows');
@@ -2402,8 +2585,18 @@
           if (!window.XLSX) throw new Error('Biblioteca XLSX indisponível.');
           const dataBuffer = await file.arrayBuffer();
           const wb = XLSX.read(dataBuffer, { type: 'array' });
-          const firstSheet = wb.Sheets[wb.SheetNames[0]];
-          rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+          rows = [];
+          const totalS = wb.SheetNames.length;
+          wb.SheetNames.forEach((sheetName, sIdx) => {
+            const sheet = wb.Sheets[sheetName];
+            const sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+            sheetRows.forEach(r => {
+              r._sheetName = sheetName;
+              r._sheetIdx = sIdx;
+              r._totalSheets = totalS;
+              rows.push(r);
+            });
+          });
         }
 
         const batchName = `Planilha: ${file.name} (${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())})`;
@@ -2432,6 +2625,22 @@
           const rawBank = String(findColumnValue(r, ['banco', 'bancos', 'banco relacionado', 'bancos relacionados', 'instituicao', 'instituicao financeira'], /banco|instituic/i) || '');
           const singleBank = rawBank.split(/[,;/]/)[0]?.trim() || '';
 
+          // Extraction of dates with sheet context fallback (coluna DATA + aba + posição da aba)
+          const rawDataCol = findColumnValue(r, ['data', 'dt', 'data do registro', 'dia', 'data registro'], /data|dia|^dt$/i);
+          const parsedSheetDate = parseDateWithSheetContext(rawDataCol, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1);
+
+          const rawReturnDate = findColumnValue(r, ['data de retorno', 'retorno', 'data retorno'], /retorno/i);
+          const returnDateParsed = parseDateWithSheetContext(rawReturnDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1) || parsedSheetDate;
+
+          const rawReceiveDate = findColumnValue(r, ['data que vai receber', 'data em que vai receber', 'data de recebimento', 'data recebimento', 'receber em', 'data receber'], /receb|vai.*receb/i) || (rawDataCol ? parsedSheetDate : '');
+          const receiveDateParsed = parseDateWithSheetContext(rawReceiveDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1) || parsedSheetDate;
+
+          const rawCarenciaDate = findColumnValue(r, ['vencimento da carencia', 'data que a carencia vence', 'vencimento carencia', 'data carencia', 'carencia vence'], /carencia/i);
+          const carenciaDateParsed = parseDateWithSheetContext(rawCarenciaDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1);
+
+          const rawClosedDate = findColumnValue(r, ['data de fechamento', 'fechamento'], /fechamento/i);
+          const closedDateParsed = parseDateWithSheetContext(rawClosedDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1);
+
           return {
             name: String(nameVal).trim(),
             number: maskPhone(findColumnValue(r, ['numero', 'numero do cliente', 'número', 'telefone', 'whatsapp', 'contato', 'celular'], /numero|telefone|whatsapp|contato/i)),
@@ -2445,10 +2654,10 @@
             partnerCommission: String(findColumnValue(r, ['comissao parceiro', 'comissão parceiro'], /comiss.*parc/i)).trim() || 'Nenhuma',
             insuranceType: String(findColumnValue(r, ['tipo de seguro', 'seguro', 'tipo seguro'], /seguro/i)).trim() || 'PRESTAMISTA',
             processStatus: String(findColumnValue(r, ['status', 'status do processo', 'situacao', 'situação'], /status|situac/i)).trim() || 'AGUARDANDO RETORNO',
-            returnDate: String(findColumnValue(r, ['data de retorno', 'retorno', 'data retorno'], /retorno/i)).trim(),
-            receiveDate: String(findColumnValue(r, ['data que vai receber', 'data em que vai receber', 'data de recebimento', 'data recebimento', 'receber em', 'data receber'], /receb|vai.*receb/i)).trim(),
-            carenciaDate: String(findColumnValue(r, ['vencimento da carencia', 'data que a carencia vence', 'vencimento carencia', 'data carencia', 'carencia vence'], /carencia/i)).trim(),
-            closedDate: String(findColumnValue(r, ['data de fechamento', 'fechamento'], /fechamento/i)).trim(),
+            returnDate: returnDateParsed,
+            receiveDate: receiveDateParsed,
+            carenciaDate: carenciaDateParsed,
+            closedDate: closedDateParsed,
             paidBefore: String(findColumnValue(r, ['pago antes', 'foi pago antes'], /pago.*antes/i)).trim() || 'Não',
             bank: singleBank,
             total: n(totalVal),
