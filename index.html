@@ -2310,13 +2310,21 @@
         return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchDay && matchWeek && matchMonth && matchYear && matchTodayAlert;
       });
 
+      // Ordena os clientes do mais recente para o mais antigo
+      const sortedFiltered = [...filtered].sort((a, b) => {
+        const dateA = getClientFinancialDate(a) || a.importedAt || '';
+        const dateB = getClientFinancialDate(b) || b.importedAt || '';
+        if (dateB !== dateA) return dateB.localeCompare(dateA);
+        return clients.indexOf(b) - clients.indexOf(a);
+      });
+
       const rowsEl = document.getElementById('rows');
-      if (!filtered.length) {
-        rowsEl.innerHTML = '<tr><td class="empty" colspan="7">Nenhum cliente encontrado com os filtros selecionados.</td></tr>';
+      if (!sortedFiltered.length) {
+        rowsEl.innerHTML = '<tr><td class="empty" colspan="8">Nenhum cliente encontrado com os filtros selecionados.</td></tr>';
         return;
       }
 
-      rowsEl.innerHTML = filtered.map(c => {
+      rowsEl.innerHTML = sortedFiltered.map(c => {
         const i = clients.indexOf(c);
         const expected = n(c.total) * (n(c.percent) / 100);
         const pending = Math.max(0, expected - n(c.paid));
@@ -3084,41 +3092,45 @@
       toggleSharedFields('register');
       document.getElementById('date').textContent = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(new Date());
 
+      // Renderiza imediatamente com os dados locais do localStorage
+      render();
+
       try {
         setSyncStatus('saving');
+
+        // 1. Escuta em tempo real qualquer alteração no Firebase
+        RTDB_REF.child('clients').on('value', snapshot => {
+          const val = snapshot.val();
+          if (val) {
+            if (Array.isArray(val)) {
+              clients = val;
+            } else if (typeof val === 'object') {
+              clients = Object.values(val);
+            }
+            localStorage.setItem(KEY, JSON.stringify(clients));
+            console.log('[RTDB] Clientes atualizados da nuvem. Total:', clients.length);
+            render();
+          } else if (clients.length > 0) {
+            // Se o Firebase estiver vazio e houver clientes locais, envia para a nuvem
+            RTDB_REF.child('clients').set(clients);
+          }
+          setSyncStatus('ok');
+        }, err => {
+          setSyncStatus('err');
+          console.error('[RTDB] Erro na sincronização:', err);
+        });
+
+        // 2. Carrega opções dinâmicas
         const snapshot = await RTDB_REF.once('value');
         const data = snapshot.val();
-        console.log('[RTDB] Dados carregados:', data);
-
-        if (data) {
-          // Restaura clientes da nuvem
-          if (Array.isArray(data.clients) && data.clients.length > 0) {
-            clients = data.clients;
-            localStorage.setItem(KEY, JSON.stringify(clients));
-            console.log('[RTDB] Clientes restaurados da nuvem. Total:', clients.length);
-          }
-
-          // Restaura listas dinâmicas da nuvem
-          if (data.options) {
-            Object.keys(data.options).forEach(key => {
-              if (DEFAULT_OPTIONS[key] && Array.isArray(data.options[key])) {
-                localStorage.setItem('gsp_opt_' + key, JSON.stringify(data.options[key]));
-              }
-            });
-            populateDropdowns();
-            console.log('[RTDB] Opções dinâmicas restauradas da nuvem.');
-          }
-        } else {
-          // RTDB vazio — se há dados locais, envia tudo para a nuvem agora
-          console.warn('[RTDB] Banco vazio — sincronizando dados locais...');
-          if (clients.length > 0) {
-            await RTDB_REF.child('clients').set(clients);
-            toast('☁️ ' + clients.length + ' cliente(s) sincronizado(s) com o Firebase!');
-            console.log('[RTDB] Dados locais enviados para a nuvem. Total:', clients.length);
-          }
+        if (data && data.options) {
+          Object.keys(data.options).forEach(key => {
+            if (DEFAULT_OPTIONS[key] && Array.isArray(data.options[key])) {
+              localStorage.setItem('gsp_opt_' + key, JSON.stringify(data.options[key]));
+            }
+          });
+          populateDropdowns();
         }
-
-        setSyncStatus('ok');
       } catch (err) {
         setSyncStatus('err');
         console.error('[RTDB] Falha ao carregar dados:', err.code, err.message);
