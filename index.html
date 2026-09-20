@@ -998,6 +998,10 @@
             <option value="">Todos os anos</option>
           </select>
 
+          <button type="button" class="btn-outline" onclick="resetDashDateFilters()" title="Limpar todos os filtros e exibir todos os clientes">
+            🧹 Limpar Filtros
+          </button>
+
           <button id="btnFilterToday" class="btn-outline" onclick="toggleTodayFilter()">
             🔔 Retornos de Hoje / Atrasados
           </button>
@@ -1918,10 +1922,17 @@
     }
 
     function resetDashDateFilters() {
-      ['dashDayFilter', 'dayFilter', 'dashWeekFilter', 'weekFilter', 'dashMonthFilter', 'monthFilter', 'dashYearFilter', 'yearFilter'].forEach(id => {
+      ['search', 'statusFilter', 'consultantFilter', 'secretariaFilter', 'insuranceFilter',
+       'dashDayFilter', 'dayFilter', 'dashWeekFilter', 'weekFilter', 'dashMonthFilter', 'monthFilter', 'dashYearFilter', 'yearFilter'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
+      onlyTodayFilter = false;
+      const btn = document.getElementById('btnFilterToday');
+      if (btn) {
+        btn.classList.remove('active-filter');
+        btn.textContent = '🔔 Retornos de Hoje / Atrasados';
+      }
       render();
     }
 
