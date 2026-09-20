@@ -658,6 +658,15 @@
               <option value="31">Dia 31</option>
             </select>
 
+            <select id="dashWeekFilter" onchange="syncWeekFilter('dashboard'); render();" style="width: auto; min-width: 140px; font-weight: 600;">
+              <option value="">Todas as Semanas</option>
+              <option value="1">1ª Semana (01 a 07)</option>
+              <option value="2">2ª Semana (08 a 14)</option>
+              <option value="3">3ª Semana (15 a 21)</option>
+              <option value="4">4ª Semana (22 a 28)</option>
+              <option value="5">5ª Semana (29 a 31)</option>
+            </select>
+
             <select id="dashMonthFilter" onchange="syncMonthFilter('dashboard'); render();" style="width: auto; min-width: 150px; font-weight: 600;">
               <option value="">Todos os Meses</option>
               <option value="01">Janeiro</option>
@@ -962,6 +971,15 @@
             <option value="29">Dia 29</option>
             <option value="30">Dia 30</option>
             <option value="31">Dia 31</option>
+          </select>
+
+          <select id="weekFilter" onchange="syncWeekFilter('history'); render();">
+            <option value="">Todas as semanas</option>
+            <option value="1">1ª Semana (01 a 07)</option>
+            <option value="2">2ª Semana (08 a 14)</option>
+            <option value="3">3ª Semana (15 a 21)</option>
+            <option value="4">4ª Semana (22 a 28)</option>
+            <option value="5">5ª Semana (29 a 31)</option>
           </select>
 
           <select id="monthFilter" onchange="syncMonthFilter('history'); render();">
@@ -1686,46 +1704,97 @@
       '09': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro'
     };
 
-    /* Extrator Inteligente de Data Combinando Coluna "DATA" + Nome da Aba (Ano/Mês) */
-    function parseDateWithSheetContext(rawDateVal, sheetName = '', sheetIndex = 0, totalSheets = 1) {
-      if (typeof rawDateVal === 'number' || (/^\d{5}$/.test(String(rawDateVal || '').trim()))) {
-        const num = Number(rawDateVal);
-        if (num > 20000 && num < 80000) {
-          const jsDate = new Date(Math.round((num - (25567 + 2)) * 86400 * 1000));
-          if (!isNaN(jsDate.getTime())) {
-            const y = jsDate.getUTCFullYear();
-            const m = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
-            const d = String(jsDate.getUTCDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
+    const weekLabels = {
+      '1': '1ª Semana (01 a 07)',
+      '2': '2ª Semana (08 a 14)',
+      '3': '3ª Semana (15 a 21)',
+      '4': '4ª Semana (22 a 28)',
+      '5': '5ª Semana (29 a 31)'
+    };
+
+    /* Identifica qual semana do mês (1 a 5) pertence uma data YYYY-MM-DD */
+    function getWeekOfMonth(dateStr) {
+      if (!dateStr || dateStr.length < 10) return '';
+      const day = parseInt(dateStr.slice(8, 10), 10);
+      if (isNaN(day) || day < 1) return '';
+      if (day <= 7) return '1';
+      if (day <= 14) return '2';
+      if (day <= 21) return '3';
+      if (day <= 28) return '4';
+      return '5';
+    }
+
+    /* Valida se a aba é de dados (ex: 'SEMANA 10 - 14 11 25') e descarta 'PAGAMENTO' */
+    function isDataSheetValid(sheetName, allSheetNames = []) {
+      if (!sheetName) return false;
+      const norm = normalize(sheetName);
+      // 1. Sempre descarta qualquer aba de pagamento
+      if (norm.includes('pagamento') || norm.includes('pagto') || norm.startsWith('pag')) {
+        return false;
+      }
+      // 2. Se o arquivo contém abas com padrão 'semana', lê apenas essas abas
+      const hasSemanaSheets = (allSheetNames || []).some(s => {
+        const n = normalize(s);
+        return !n.includes('pagamento') && !n.includes('pagto') && (n.includes('semana') || n.includes('sem'));
+      });
+      if (hasSemanaSheets) {
+        return norm.includes('semana') || norm.includes('sem');
+      }
+      return true;
+    }
+
+    /* Extrai Ano, Mês, Dia e Contador de Semana do Nome da Aba */
+    function parseSheetNameInfo(sheetName = '') {
+      if (!sheetName) return { year: '2025', month: '01', startDay: '01', endDay: '01', weekNum: '1', weekCounter: '' };
+
+      const norm = normalize(sheetName).trim();
+      let year = '';
+      let month = '';
+      let startDay = '';
+      let endDay = '';
+      let weekNum = '';
+      let weekCounter = '';
+
+      // 1. Contador da semana (número logo após a palavra SEMANA / SEM)
+      const counterMatch = norm.match(/(?:semana|sem\.?)\s*(\d+)/i);
+      if (counterMatch) {
+        weekCounter = counterMatch[1];
+      }
+
+      // 2. Extração da data no FINAL da aba (ex.: "17 05 26", "14 11 25", "03 A 07 11 25", "17/05/2026")
+      // Padrão 1: Três blocos numéricos no final -> DIA, MÊS, ANO (ex: "17 05 26" ou "14 11 25")
+      const threeNumMatch = sheetName.match(/(\d{1,2})\s*[\/\.-]?\s*(\d{1,2})\s*[\/\.-]?\s*(\d{2,4})\s*$/);
+      if (threeNumMatch) {
+        const dVal = parseInt(threeNumMatch[1], 10);
+        const mVal = parseInt(threeNumMatch[2], 10);
+        let yVal = threeNumMatch[3];
+
+        if (dVal >= 1 && dVal <= 31 && mVal >= 1 && mVal <= 12) {
+          startDay = String(dVal).padStart(2, '0');
+          endDay = startDay;
+          month = String(mVal).padStart(2, '0');
+          if (yVal.length === 2) yVal = '20' + yVal;
+          year = yVal;
+        }
+      }
+
+      // Padrão 2: Dois blocos numéricos no final -> MÊS e ANO (ex: "11 25" ou "11/2025")
+      if (!year) {
+        const twoNumMatch = sheetName.match(/(\d{1,2})\s*[\/\.-]?\s*(\d{2,4})\s*$/);
+        if (twoNumMatch) {
+          const mVal = parseInt(twoNumMatch[1], 10);
+          let yVal = twoNumMatch[2];
+          if (mVal >= 1 && mVal <= 12) {
+            month = String(mVal).padStart(2, '0');
+            if (yVal.length === 2) yVal = '20' + yVal;
+            year = yVal;
+            startDay = '01';
           }
         }
       }
 
-      let year = '';
-      let sheetMonth = '';
-
-      // 1. Identifica Ano pelo Nome da Aba (ex.: "SETEMBRO 2025", "JAN 2026", "OUT 25")
-      if (sheetName) {
-        const y4 = sheetName.match(/\b(20\d{2})\b/);
-        if (y4) {
-          year = y4[1];
-        } else {
-          const y2 = sheetName.match(/\b([2-9]\d)\b/);
-          if (y2) year = '20' + y2[1];
-        }
-      }
-      // Se não houver ano explícito no nome da aba: as primeiras abas são de 2025 e a segunda/última de 2026
-      if (!year) {
-        if (totalSheets > 1) {
-          year = (sheetIndex < totalSheets - 1) ? '2025' : '2026';
-        } else {
-          year = '2025';
-        }
-      }
-
-      // 2. Identifica Mês pelo Nome da Aba se a data na célula for apenas o dia
-      if (sheetName) {
-        const normS = normalize(sheetName);
+      // Se o mês ainda não foi definido, tenta procurar por nome por extenso (janeiro..dezembro)
+      if (!month) {
         const monthsMap = {
           'janeiro': '01', 'jan': '01',
           'fevereiro': '02', 'fev': '02',
@@ -1741,17 +1810,55 @@
           'dezembro': '12', 'dez': '12'
         };
         for (const [mKey, mVal] of Object.entries(monthsMap)) {
-          if (normS.includes(mKey)) {
-            sheetMonth = mVal;
+          if (new RegExp(`\\b${mKey}\\b`, 'i').test(norm)) {
+            month = mVal;
             break;
           }
         }
       }
 
+      // Se o ano ainda não foi definido, procura 20XX ou 2X
+      if (!year) {
+        const y4 = sheetName.match(/\b(20\d{2})\b/);
+        if (y4) {
+          year = y4[1];
+        } else {
+          const y2 = sheetName.match(/\b([2-9]\d)\b/);
+          if (y2) year = '20' + y2[1];
+        }
+      }
+
+      if (!year) year = '2025';
+      if (!month) month = '01';
+      if (!startDay) startDay = '01';
+
+      // Semana do mês (1ª a 5ª Semana) com base no dia final da data
+      const dInt = parseInt(startDay, 10);
+      weekNum = String(Math.min(5, Math.max(1, Math.ceil(dInt / 7))));
+
+      return { year, month, startDay, endDay, weekNum, weekCounter };
+    }
+
+    /* Extrator Inteligente de Data Combinando Coluna "DATA" + Nome da Aba */
+    function parseDateWithSheetContext(rawDateVal, sheetName = '') {
+      if (typeof rawDateVal === 'number' || (/^\d{5}$/.test(String(rawDateVal || '').trim()))) {
+        const num = Number(rawDateVal);
+        if (num > 20000 && num < 80000) {
+          const jsDate = new Date(Math.round((num - (25567 + 2)) * 86400 * 1000));
+          if (!isNaN(jsDate.getTime())) {
+            const y = jsDate.getUTCFullYear();
+            const m = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
+            const d = String(jsDate.getUTCDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          }
+        }
+      }
+
+      const sheetInfo = parseSheetNameInfo(sheetName);
       const str = String(rawDateVal || '').trim();
+
       if (!str) {
-        if (sheetMonth && year) return `${year}-${sheetMonth}-01`;
-        return '';
+        return `${sheetInfo.year}-${sheetInfo.month}-${sheetInfo.startDay}`;
       }
 
       // Se já estiver em formato YYYY-MM-DD
@@ -1772,17 +1879,17 @@
       if (dmMatch) {
         const day = dmMatch[1].padStart(2, '0');
         const month = dmMatch[2].padStart(2, '0');
-        return `${year}-${month}-${day}`;
+        return `${sheetInfo.year}-${month}-${day}`;
       }
 
       // Se for apenas o dia em número (ex.: "15" ou "5")
       const dayOnlyMatch = str.match(/^(\d{1,2})$/);
-      if (dayOnlyMatch && sheetMonth) {
+      if (dayOnlyMatch) {
         const day = dayOnlyMatch[1].padStart(2, '0');
-        return `${year}-${sheetMonth}-${day}`;
+        return `${sheetInfo.year}-${sheetInfo.month}-${day}`;
       }
 
-      return '';
+      return `${sheetInfo.year}-${sheetInfo.month}-${sheetInfo.startDay}`;
     }
 
     /* Sincronização dos Filtros de Data entre Dashboard e Histórico */
@@ -1790,6 +1897,13 @@
       const isDash = source === 'dashboard';
       const sourceVal = val(isDash ? 'dashDayFilter' : 'dayFilter');
       const targetEl = document.getElementById(isDash ? 'dayFilter' : 'dashDayFilter');
+      if (targetEl) targetEl.value = sourceVal;
+    }
+
+    function syncWeekFilter(source) {
+      const isDash = source === 'dashboard';
+      const sourceVal = val(isDash ? 'dashWeekFilter' : 'weekFilter');
+      const targetEl = document.getElementById(isDash ? 'weekFilter' : 'dashWeekFilter');
       if (targetEl) targetEl.value = sourceVal;
     }
 
@@ -1808,7 +1922,7 @@
     }
 
     function resetDashDateFilters() {
-      ['dashDayFilter', 'dayFilter', 'dashMonthFilter', 'monthFilter', 'dashYearFilter', 'yearFilter'].forEach(id => {
+      ['dashDayFilter', 'dayFilter', 'dashWeekFilter', 'weekFilter', 'dashMonthFilter', 'monthFilter', 'dashYearFilter', 'yearFilter'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
@@ -2078,6 +2192,7 @@
       const insuranceF = val('insuranceFilter');
 
       const dayF = val('dashDayFilter') || val('dayFilter');
+      const weekF = val('dashWeekFilter') || val('weekFilter');
       const monthF = val('dashMonthFilter') || val('monthFilter');
       const yearF = val('dashYearFilter') || val('yearFilter');
 
@@ -2087,6 +2202,7 @@
         let labelText = 'Exibindo lucros de: ';
         const parts = [];
         if (dayF) parts.push(`Dia ${dayF}`);
+        if (weekF) parts.push(weekLabels[weekF] || `${weekF}ª Semana`);
         if (monthF) parts.push(monthNames[monthF]);
         if (yearF) parts.push(`Ano ${yearF}`);
         if (parts.length > 0) labelText += parts.join(' / ');
@@ -2100,15 +2216,17 @@
         return norm.includes('fechado') && !norm.includes('nao fechado');
       };
 
-      // 1. Filtro dos clientes para Métricas de Lucros no Dashboard (Dia/Mês/Ano)
+      // 1. Filtro dos clientes para Métricas de Lucros no Dashboard (Dia/Semana/Mês/Ano)
       const dashFiltered = clients.filter(c => {
-        if (!dayF && !monthF && !yearF) return true;
+        if (!dayF && !weekF && !monthF && !yearF) return true;
         const dStr = getClientFinancialDate(c);
         if (!dStr) return false;
         const d = dStr.slice(8, 10);
+        const w = getWeekOfMonth(dStr);
         const m = dStr.slice(5, 7);
         const y = dStr.slice(0, 4);
         if (dayF && d !== dayF) return false;
+        if (weekF && w !== weekF) return false;
         if (monthF && m !== monthF) return false;
         if (yearF && y !== yearF) return false;
         return true;
@@ -2156,9 +2274,11 @@
 
         const dStr = getClientFinancialDate(c);
         const d = dStr ? dStr.slice(8, 10) : '';
+        const w = dStr ? getWeekOfMonth(dStr) : '';
         const m = dStr ? dStr.slice(5, 7) : '';
         const y = dStr ? dStr.slice(0, 4) : '';
         const matchDay = !dayF || d === dayF;
+        const matchWeek = !weekF || w === weekF;
         const matchMonth = !monthF || m === monthF;
         const matchYear = !yearF || y === yearF;
 
@@ -2172,7 +2292,7 @@
           }
         }
 
-        return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchDay && matchMonth && matchYear && matchTodayAlert;
+        return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchDay && matchWeek && matchMonth && matchYear && matchTodayAlert;
       });
 
       const rowsEl = document.getElementById('rows');
@@ -2588,6 +2708,11 @@
           rows = [];
           const totalS = wb.SheetNames.length;
           wb.SheetNames.forEach((sheetName, sIdx) => {
+            // Ignora abas de pagamento e outras que fujam do padrão
+            if (!isDataSheetValid(sheetName, wb.SheetNames)) {
+              console.log(`[Import] Ignorando aba de pagamento/fora do padrão: "${sheetName}"`);
+              return;
+            }
             const sheet = wb.Sheets[sheetName];
             const sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
             sheetRows.forEach(r => {
@@ -2625,21 +2750,21 @@
           const rawBank = String(findColumnValue(r, ['banco', 'bancos', 'banco relacionado', 'bancos relacionados', 'instituicao', 'instituicao financeira'], /banco|instituic/i) || '');
           const singleBank = rawBank.split(/[,;/]/)[0]?.trim() || '';
 
-          // Extraction of dates with sheet context fallback (coluna DATA + aba + posição da aba)
+          // Extraction of dates with sheet context fallback (coluna DATA + aba ex.: SEMANA 10 - 14 11 25)
           const rawDataCol = findColumnValue(r, ['data', 'dt', 'data do registro', 'dia', 'data registro'], /data|dia|^dt$/i);
-          const parsedSheetDate = parseDateWithSheetContext(rawDataCol, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1);
+          const parsedSheetDate = parseDateWithSheetContext(rawDataCol, r._sheetName);
 
           const rawReturnDate = findColumnValue(r, ['data de retorno', 'retorno', 'data retorno'], /retorno/i);
-          const returnDateParsed = parseDateWithSheetContext(rawReturnDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1) || parsedSheetDate;
+          const returnDateParsed = parseDateWithSheetContext(rawReturnDate, r._sheetName) || parsedSheetDate;
 
           const rawReceiveDate = findColumnValue(r, ['data que vai receber', 'data em que vai receber', 'data de recebimento', 'data recebimento', 'receber em', 'data receber'], /receb|vai.*receb/i) || (rawDataCol ? parsedSheetDate : '');
-          const receiveDateParsed = parseDateWithSheetContext(rawReceiveDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1) || parsedSheetDate;
+          const receiveDateParsed = parseDateWithSheetContext(rawReceiveDate, r._sheetName) || parsedSheetDate;
 
           const rawCarenciaDate = findColumnValue(r, ['vencimento da carencia', 'data que a carencia vence', 'vencimento carencia', 'data carencia', 'carencia vence'], /carencia/i);
-          const carenciaDateParsed = parseDateWithSheetContext(rawCarenciaDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1);
+          const carenciaDateParsed = parseDateWithSheetContext(rawCarenciaDate, r._sheetName);
 
           const rawClosedDate = findColumnValue(r, ['data de fechamento', 'fechamento'], /fechamento/i);
-          const closedDateParsed = parseDateWithSheetContext(rawClosedDate, r._sheetName, r._sheetIdx || 0, r._totalSheets || 1);
+          const closedDateParsed = parseDateWithSheetContext(rawClosedDate, r._sheetName);
 
           return {
             name: String(nameVal).trim(),
