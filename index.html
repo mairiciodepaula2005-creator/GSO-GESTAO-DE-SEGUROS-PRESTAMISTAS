@@ -459,6 +459,17 @@
     }
     .whatsapp-reminder-btn:hover { filter: brightness(1.08); color: #fff; }
 
+    /* Coluna de ações: mantém os botões completos, inclusive em telas estreitas. */
+    th.actions-column,
+    td.actions-cell {
+      width: 190px;
+      min-width: 190px;
+    }
+    .actions-cell .whatsapp-btn,
+    .actions-cell .whatsapp-reminder-btn {
+      white-space: nowrap;
+    }
+
     /* Modal */
     .modal-backdrop {
       display: none;
@@ -1032,7 +1043,7 @@
                 <th>Status do Processo</th>
                 <th>Valor Total</th>
                 <th>% (OBS) | A Receber</th>
-                <th style="min-width:155px;">Ações</th>
+                <th class="actions-column">Ações</th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -2377,7 +2388,7 @@
               <strong style="color:var(--blue)">${money(expected)}</strong><br>
               <small style="color:#64748b">${n(c.percent) > 0 ? n(c.percent) + '% sobre total' : '<span style="color:#ef4444">% não lida da OBS</span>'}</small>
             </td>
-            <td style="min-width:155px; white-space:nowrap;">
+            <td class="actions-cell">
               <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
                 <a class="whatsapp-btn" href="${whatsappUrl(c.number)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
                   💬 Contato
