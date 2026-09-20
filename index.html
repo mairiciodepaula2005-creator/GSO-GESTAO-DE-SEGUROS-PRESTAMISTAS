@@ -611,23 +611,86 @@
 
     <!-- Dashboard -->
     <section class="view active" id="dashboard">
-      <section class="summary">
+      <!-- Filtro Mês e Ano dos Lucros -->
+      <section class="panel" style="margin-bottom: 20px; padding: 18px 22px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+          <div>
+            <h3 style="margin: 0 0 4px; font-size: 17px; display: flex; align-items: center; gap: 8px;">
+              📊 Filtro de Período & Análise de Lucros
+            </h3>
+            <span id="dashPeriodBadge" style="font-size: 13px; color: var(--blue); font-weight: 700;">
+              Exibindo lucros de: Todo o Histórico (Geral)
+            </span>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <select id="dashMonthFilter" onchange="syncMonthFilter('dashboard'); render();" style="width: auto; min-width: 150px; font-weight: 600;">
+              <option value="">Todos os Meses</option>
+              <option value="01">Janeiro</option>
+              <option value="02">Fevereiro</option>
+              <option value="03">Março</option>
+              <option value="04">Abril</option>
+              <option value="05">Maio</option>
+              <option value="06">Junho</option>
+              <option value="07">Julho</option>
+              <option value="08">Agosto</option>
+              <option value="09">Setembro</option>
+              <option value="10">Outubro</option>
+              <option value="11">Novembro</option>
+              <option value="12">Dezembro</option>
+            </select>
+
+            <select id="dashYearFilter" onchange="syncYearFilter('dashboard'); render();" style="width: auto; min-width: 140px; font-weight: 600;">
+              <option value="">Todos os Anos</option>
+            </select>
+
+            <button type="button" class="btn-outline" onclick="resetDashDateFilters()" style="padding: 9px 13px; font-size: 12px; font-weight: 600;">
+              🧹 Limpar Filtro
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Métricas de Lucros do Período -->
+      <section class="summary" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
         <article class="metric clients">
-          <div class="label">Clientes cadastrados</div>
+          <div class="label">Clientes no Período</div>
           <strong id="totalClients">0</strong>
         </article>
         <article class="metric total-insurance">
-          <div class="label">Total em seguros</div>
+          <div class="label">Total em Seguros</div>
           <strong id="totalInsurance">R$ 0,00</strong>
         </article>
         <article class="metric receivable">
-          <div class="label">Pendências a receber</div>
+          <div class="label">Lucro / Comissão a Receber</div>
           <strong id="toReceive">R$ 0,00</strong>
         </article>
         <article class="metric received">
-          <div class="label">Total já recebido</div>
+          <div class="label">Lucro / Comissão Recebida</div>
           <strong id="received">R$ 0,00</strong>
         </article>
+        <article class="metric" style="border-left: 4px solid #10b981;">
+          <div class="label" style="color: #047857;">Lucro Total Estimado</div>
+          <strong id="totalProfit" style="color: #047857;">R$ 0,00</strong>
+        </article>
+      </section>
+
+      <!-- Central de Lembretes dos Dias Marcados -->
+      <section class="panel" style="margin-top: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+          <div>
+            <h3 style="margin: 0 0 4px; display: flex; align-items: center; gap: 8px;">
+              🔔 Central de Lembretes — Mensagens nos Dias Marcados
+            </h3>
+            <p style="color: var(--muted); font-size: 13px; margin: 0;">
+              Clientes com retorno, recebimento ou vencimento de carência agendados para <strong>HOJE</strong>, atrasados ou nos próximos 3 dias.
+            </p>
+          </div>
+          <span id="reminderCountBadge" style="background: #fee2e2; color: #b91c1c; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 999px;">
+            0 agendamento(s)
+          </span>
+        </div>
+
+        <div id="reminderList" style="display: grid; gap: 12px; margin-top: 16px;"></div>
       </section>
     </section>
 
@@ -829,6 +892,26 @@
 
           <select id="insuranceFilter" onchange="render()">
             <option value="">Todos os tipos de seguro</option>
+          </select>
+
+          <select id="monthFilter" onchange="syncMonthFilter('history'); render();">
+            <option value="">Todos os meses</option>
+            <option value="01">Janeiro</option>
+            <option value="02">Fevereiro</option>
+            <option value="03">Março</option>
+            <option value="04">Abril</option>
+            <option value="05">Maio</option>
+            <option value="06">Junho</option>
+            <option value="07">Julho</option>
+            <option value="08">Agosto</option>
+            <option value="09">Setembro</option>
+            <option value="10">Outubro</option>
+            <option value="11">Novembro</option>
+            <option value="12">Dezembro</option>
+          </select>
+
+          <select id="yearFilter" onchange="syncYearFilter('history'); render();">
+            <option value="">Todos os anos</option>
           </select>
 
           <button id="btnFilterToday" class="btn-outline" onclick="toggleTodayFilter()">
@@ -1517,9 +1600,163 @@
       }
     }
 
-    function getReminderMessage(client) {
-      const dateFmt = formatDateBR(client.returnDate) || 'hoje';
-      return `Olá, ${client.name}! Tudo bem?\n\nAqui é da equipe de gestão de resgate de seguros. Conforme combinamos nosso retorno para ${dateFmt}, estou entrando em contato para darmos continuidade ao seu processo. Podemos falar agora?`;
+    /* Utilitário para Data Financeira / Período do Cliente */
+    function getClientFinancialDate(c) {
+      if (c.receiveDate && c.receiveDate.length >= 10) return c.receiveDate.slice(0, 10);
+      if (c.closedDate && c.closedDate.length >= 10) return c.closedDate.slice(0, 10);
+      if (c.returnDate && c.returnDate.length >= 10) return c.returnDate.slice(0, 10);
+      if (c.carenciaDate && c.carenciaDate.length >= 10) return c.carenciaDate.slice(0, 10);
+      if (c.importedAt && c.importedAt.length >= 10) return c.importedAt.slice(0, 10);
+      return '';
+    }
+
+    const monthNames = {
+      '01': 'Janeiro', '02': 'Fevereiro', '03': 'Março', '04': 'Abril',
+      '05': 'Maio', '06': 'Junho', '07': 'Julho', '08': 'Agosto',
+      '09': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro'
+    };
+
+    /* Sincronização dos Filtros de Data entre Dashboard e Histórico */
+    function syncMonthFilter(source) {
+      const isDash = source === 'dashboard';
+      const sourceVal = val(isDash ? 'dashMonthFilter' : 'monthFilter');
+      const targetEl = document.getElementById(isDash ? 'monthFilter' : 'dashMonthFilter');
+      if (targetEl) targetEl.value = sourceVal;
+    }
+
+    function syncYearFilter(source) {
+      const isDash = source === 'dashboard';
+      const sourceVal = val(isDash ? 'dashYearFilter' : 'yearFilter');
+      const targetEl = document.getElementById(isDash ? 'yearFilter' : 'dashYearFilter');
+      if (targetEl) targetEl.value = sourceVal;
+    }
+
+    function resetDashDateFilters() {
+      ['dashMonthFilter', 'monthFilter', 'dashYearFilter', 'yearFilter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      render();
+    }
+
+    /* Popula os Selects de Anos com os Anos dos Clientes + Anos Padrão */
+    function populateYearDropdowns() {
+      const currentYear = new Date().getFullYear();
+      const yearSet = new Set([
+        String(currentYear - 2),
+        String(currentYear - 1),
+        String(currentYear),
+        String(currentYear + 1),
+        String(currentYear + 2)
+      ]);
+
+      clients.forEach(c => {
+        const dStr = getClientFinancialDate(c);
+        if (dStr && dStr.length >= 4) {
+          const y = dStr.slice(0, 4);
+          if (/^\d{4}$/.test(y)) yearSet.add(y);
+        }
+      });
+
+      const sortedYears = Array.from(yearSet).sort((a, b) => b - a);
+
+      ['dashYearFilter', 'yearFilter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const cur = el.value;
+        el.innerHTML = '<option value="">Todos os Anos</option>' +
+          sortedYears.map(y => `<option value="${y}">Ano ${y}</option>`).join('');
+        if (cur && sortedYears.includes(cur)) el.value = cur;
+      });
+    }
+
+    function getReminderMessage(client, dateType = 'return') {
+      const name = client.name || 'Cliente';
+      if (dateType === 'receive') {
+        const dateFmt = formatDateBR(client.receiveDate) || 'hoje';
+        return `Olá, ${name}! Tudo bem?\n\nAqui é da equipe de gestão de resgate de seguros. Passando para confirmar o agendamento de recebimento do seu seguro previsto para ${dateFmt}. Agradecemos a parceria! Podemos conversar?`;
+      }
+      if (dateType === 'carencia') {
+        const dateFmt = formatDateBR(client.carenciaDate) || 'hoje';
+        return `Olá, ${name}! Tudo bem?\n\nAqui é da equipe de gestão de resgate de seguros. Passando para informar que o período de carência do seu seguro vence em ${dateFmt}. Estamos à disposição para os próximos passos! Podemos falar?`;
+      }
+      const dateFmt = formatDateBR(client.returnDate || client.receiveDate) || 'hoje';
+      return `Olá, ${name}! Tudo bem?\n\nAqui é da equipe de gestão de resgate de seguros. Conforme combinamos nosso retorno para ${dateFmt}, estou entrando em contato para darmos continuidade ao seu processo. Podemos falar agora?`;
+    }
+
+    /* Central de Lembretes - Envio de Mensagens WhatsApp no Dia Marcado */
+    function renderReminders() {
+      const listEl = document.getElementById('reminderList');
+      const badgeEl = document.getElementById('reminderCountBadge');
+      if (!listEl) return;
+
+      const reminderItems = [];
+      clients.forEach(c => {
+        const dates = [
+          { type: 'return', date: c.returnDate, title: '📅 Retorno Agendado' },
+          { type: 'receive', date: c.receiveDate, title: '💰 Recebimento Previsto' },
+          { type: 'carencia', date: c.carenciaDate, title: '⏳ Vencimento de Carência' }
+        ];
+        dates.forEach(d => {
+          if (!d.date) return;
+          const analysis = analyzeReturnDate(d.date);
+          if (!analysis) return;
+          if (analysis.diffDays <= 3) {
+            reminderItems.push({
+              client: c,
+              type: d.type,
+              title: d.title,
+              date: d.date,
+              analysis: analysis
+            });
+          }
+        });
+      });
+
+      reminderItems.sort((a, b) => a.analysis.diffDays - b.analysis.diffDays);
+
+      if (badgeEl) {
+        const urgentCount = reminderItems.filter(i => i.analysis.diffDays <= 0).length;
+        badgeEl.textContent = `${reminderItems.length} agendamento(s) próximo(s)${urgentCount > 0 ? ` (${urgentCount} urgente)` : ''}`;
+        badgeEl.style.background = urgentCount > 0 ? '#fee2e2' : '#fef9c3';
+        badgeEl.style.color = urgentCount > 0 ? '#b91c1c' : '#a16207';
+      }
+
+      if (!reminderItems.length) {
+        listEl.innerHTML = `
+          <div style="text-align:center; padding:24px; color:var(--muted); background:#f8fafc; border-radius:10px; border:1px dashed var(--line);">
+            ✅ Nenhum agendamento próximo ou atrasado no momento. Todos os contatos estão em dia!
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = reminderItems.map(item => {
+        const msg = getReminderMessage(item.client, item.type);
+        const waUrl = whatsappUrl(item.client.number, msg);
+
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:14px 18px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <strong style="font-size:15px; color:var(--ink);">${escapeHtml(item.client.name)}</strong>
+                ${renderStatusBadge(item.client.processStatus)}
+                <span class="return-badge ${item.analysis.class}">${item.analysis.label}</span>
+              </div>
+              <div style="font-size:13px; color:#475569; display:flex; gap:14px; flex-wrap:wrap; margin-top:2px;">
+                <span>📌 <strong>${item.title}:</strong> ${formatDateBR(item.date)}</span>
+                <span>📞 ${escapeHtml(item.client.number || 'Sem telefone')}</span>
+                <span>🏦 ${escapeHtml(item.client.bank || 'Não informado')}</span>
+              </div>
+            </div>
+            <div>
+              <a class="whatsapp-btn" href="${waUrl}" target="_blank" rel="noopener" style="padding:8px 14px; font-size:13px; font-weight:700;">
+                💬 Enviar Mensagem WhatsApp
+              </a>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     function persist() {
@@ -1654,14 +1891,78 @@
       render();
     }
 
-    /* Renderização e Cálculos da Tabela */
+    /* Renderização e Cálculos da Tabela e Dashboard */
     function render() {
+      populateYearDropdowns();
+
       const q = normalize(val('search'));
       const statusF = val('statusFilter');
       const consultantF = val('consultantFilter');
       const secretariaF = val('secretariaFilter');
       const insuranceF = val('insuranceFilter');
 
+      const monthF = val('dashMonthFilter') || val('monthFilter');
+      const yearF = val('dashYearFilter') || val('yearFilter');
+
+      // Atualiza Badge do Período no Dashboard
+      const periodBadge = document.getElementById('dashPeriodBadge');
+      if (periodBadge) {
+        let labelText = 'Exibindo lucros de: ';
+        if (monthF && yearF) labelText += `${monthNames[monthF]} / ${yearF}`;
+        else if (monthF) labelText += `${monthNames[monthF]} (Todos os Anos)`;
+        else if (yearF) labelText += `Ano ${yearF} (Todos os Meses)`;
+        else labelText += 'Todo o Histórico (Geral)';
+        periodBadge.textContent = labelText;
+      }
+
+      // Helper para identificar se o status é FECHADO (para dashboard)
+      const isClosedStatus = st => {
+        const norm = normalize(st || '');
+        return norm.includes('fechado') && !norm.includes('nao fechado');
+      };
+
+      // 1. Filtro dos clientes para Métricas de Lucros no Dashboard (Mês/Ano)
+      const dashFiltered = clients.filter(c => {
+        if (!monthF && !yearF) return true;
+        const dStr = getClientFinancialDate(c);
+        if (!dStr) return false;
+        const m = dStr.slice(5, 7);
+        const y = dStr.slice(0, 4);
+        if (monthF && m !== monthF) return false;
+        if (yearF && y !== yearF) return false;
+        return true;
+      });
+
+      // Cálculos gerais do dashboard com base no período filtrado
+      const totalInsuranceSum = dashFiltered.reduce((s, c) => s + n(c.total), 0);
+
+      const paidSum = dashFiltered.reduce((s, c) => {
+        const expected = n(c.total) * (n(c.percent) / 100);
+        if (isClosedStatus(c.processStatus)) return s + expected;
+        return s + n(c.paid);
+      }, 0);
+
+      const toReceiveSum = dashFiltered.reduce((s, c) => {
+        if (isClosedStatus(c.processStatus)) return s;
+        const expected = n(c.total) * (n(c.percent) / 100);
+        return s + Math.max(0, expected - n(c.paid));
+      }, 0);
+
+      const totalProfitSum = dashFiltered.reduce((s, c) => {
+        return s + (n(c.total) * (n(c.percent) / 100));
+      }, 0);
+
+      document.getElementById('totalClients').textContent = dashFiltered.length;
+      document.getElementById('totalInsurance').textContent = money(totalInsuranceSum);
+      document.getElementById('toReceive').textContent = money(toReceiveSum);
+      document.getElementById('received').textContent = money(paidSum);
+      const totalProfitEl = document.getElementById('totalProfit');
+      if (totalProfitEl) totalProfitEl.textContent = money(totalProfitSum);
+
+      // Renderiza a Central de Lembretes dos Dias Marcados
+      renderReminders();
+
+      // 2. Filtro de clientes para a Tabela do Histórico
       const filtered = clients.filter(c => {
         const bankStr = c.bank || (c.banks && c.banks[0]) || '';
         const fullSearchString = `${c.name} ${c.number} ${c.location} ${c.neighborhood} ${c.consultant} ${c.secretaria} ${c.company} ${c.partnerName} ${c.insuranceType} ${bankStr}`;
@@ -1672,9 +1973,15 @@
         const matchSecretaria = !secretariaF || (c.secretaria || '') === secretariaF;
         const matchInsurance = !insuranceF || (c.insuranceType || '') === insuranceF;
 
+        const dStr = getClientFinancialDate(c);
+        const m = dStr ? dStr.slice(5, 7) : '';
+        const y = dStr ? dStr.slice(0, 4) : '';
+        const matchMonth = !monthF || m === monthF;
+        const matchYear = !yearF || y === yearF;
+
         let matchTodayAlert = true;
         if (onlyTodayFilter) {
-          if (c.processStatus !== 'FALARÁ COMIGO NA DATA' || !c.returnDate) {
+          if (!c.returnDate) {
             matchTodayAlert = false;
           } else {
             const analysis = analyzeReturnDate(c.returnDate);
@@ -1682,34 +1989,8 @@
           }
         }
 
-        return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchTodayAlert;
+        return matchText && matchStatus && matchConsultant && matchSecretaria && matchInsurance && matchMonth && matchYear && matchTodayAlert;
       });
-
-      // Helper para identificar se o status é FECHADO (para dashboard)
-      const isClosedStatus = st => {
-        const norm = normalize(st || '');
-        return norm.includes('fechado') && !norm.includes('nao fechado');
-      };
-
-      // Cálculos gerais do dashboard
-      const totalInsuranceSum = clients.reduce((s, c) => s + n(c.total), 0);
-
-      const paidSum = clients.reduce((s, c) => {
-        const expected = n(c.total) * (n(c.percent) / 100);
-        if (isClosedStatus(c.processStatus)) return s + expected; // FECHADO = já recebido
-        return s + n(c.paid);
-      }, 0);
-
-      const toReceiveSum = clients.reduce((s, c) => {
-        if (isClosedStatus(c.processStatus)) return s; // FECHADO já está no recebido
-        const expected = n(c.total) * (n(c.percent) / 100);
-        return s + Math.max(0, expected - n(c.paid));
-      }, 0);
-
-      document.getElementById('totalClients').textContent = clients.length;
-      document.getElementById('totalInsurance').textContent = money(totalInsuranceSum);
-      document.getElementById('toReceive').textContent = money(toReceiveSum);
-      document.getElementById('received').textContent = money(paidSum);
 
       const rowsEl = document.getElementById('rows');
       if (!filtered.length) {
@@ -2488,6 +2769,21 @@
       }
 
       render();
+
+      // Alerta automático de agendamentos no dia marcado / atrasados
+      setTimeout(() => {
+        let urgentCount = 0;
+        clients.forEach(c => {
+          [c.returnDate, c.receiveDate, c.carenciaDate].forEach(dStr => {
+            if (!dStr) return;
+            const a = analyzeReturnDate(dStr);
+            if (a && a.diffDays <= 0) urgentCount++;
+          });
+        });
+        if (urgentCount > 0) {
+          toast(`🔔 Lembrete: Você possui ${urgentCount} contato(s) agendado(s) para HOJE ou ATRASADO(S)! Confira na Central de Lembretes.`);
+        }
+      }, 1200);
     }
 
     init();
