@@ -335,12 +335,17 @@
     .hint { color: var(--muted); font-size: 12px; margin: 0 0 16px; line-height: 1.5; }
 
     .table-wrap {
-      overflow-x: auto;
+      overflow-x: hidden;
       border: 1px solid var(--line-light);
       border-radius: 10px;
       background: #fff;
     }
-    table { border-collapse: collapse; width: 100%; min-width: 980px; font-size: 13px; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+      font-size: 13px;
+    }
     th {
       text-align: left;
       background: #f8fafc;
@@ -352,7 +357,12 @@
       border-bottom: 1px solid var(--line-light);
       font-weight: 700;
     }
-    td { padding: 13px 14px; border-top: 1px solid var(--line-light); vertical-align: middle; }
+    td {
+      padding: 13px 14px;
+      border-top: 1px solid var(--line-light);
+      vertical-align: middle;
+      overflow-wrap: anywhere;
+    }
     tr.data-row { cursor: pointer; transition: background 0.15s ease; }
     tr.data-row:hover td { background: #f8fafc; }
     .empty { color: var(--muted); text-align: center; padding: 40px !important; font-size: 14px; }
@@ -411,6 +421,14 @@
       color: #475569;
       border: 1px solid #cbd5e1;
     }
+    .status-badges {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .status-badges .return-badge { margin-top: 0; }
+    .status-dates { margin-top: 4px; }
 
     .shared-tag {
       display: inline-block;
@@ -461,10 +479,12 @@
 
     /* Coluna de ações: mantém os botões completos, inclusive em telas estreitas. */
     th.actions-column,
-    td.actions-cell {
-      width: 190px;
-      min-width: 190px;
+    td.actions-cell,
+    col.actions-column {
+      width: 215px !important;
+      min-width: 215px !important;
     }
+    col.status-column { width: 27%; }
     .actions-cell .whatsapp-btn,
     .actions-cell .whatsapp-reminder-btn {
       white-space: nowrap;
@@ -945,74 +965,6 @@
             <option value="">Todos os tipos de seguro</option>
           </select>
 
-          <select id="dayFilter" onchange="syncDayFilter('history'); render();">
-            <option value="">Todos os dias</option>
-            <option value="01">Dia 01</option>
-            <option value="02">Dia 02</option>
-            <option value="03">Dia 03</option>
-            <option value="04">Dia 04</option>
-            <option value="05">Dia 05</option>
-            <option value="06">Dia 06</option>
-            <option value="07">Dia 07</option>
-            <option value="08">Dia 08</option>
-            <option value="09">Dia 09</option>
-            <option value="10">Dia 10</option>
-            <option value="11">Dia 11</option>
-            <option value="12">Dia 12</option>
-            <option value="13">Dia 13</option>
-            <option value="14">Dia 14</option>
-            <option value="15">Dia 15</option>
-            <option value="16">Dia 16</option>
-            <option value="17">Dia 17</option>
-            <option value="18">Dia 18</option>
-            <option value="19">Dia 19</option>
-            <option value="20">Dia 20</option>
-            <option value="21">Dia 21</option>
-            <option value="22">Dia 22</option>
-            <option value="23">Dia 23</option>
-            <option value="24">Dia 24</option>
-            <option value="25">Dia 25</option>
-            <option value="26">Dia 26</option>
-            <option value="27">Dia 27</option>
-            <option value="28">Dia 28</option>
-            <option value="29">Dia 29</option>
-            <option value="30">Dia 30</option>
-            <option value="31">Dia 31</option>
-          </select>
-
-          <select id="weekFilter" onchange="syncWeekFilter('history'); render();">
-            <option value="">Todas as semanas</option>
-            <option value="1">1ª Semana (01 a 07)</option>
-            <option value="2">2ª Semana (08 a 14)</option>
-            <option value="3">3ª Semana (15 a 21)</option>
-            <option value="4">4ª Semana (22 a 28)</option>
-            <option value="5">5ª Semana (29 a 31)</option>
-          </select>
-
-          <select id="monthFilter" onchange="syncMonthFilter('history'); render();">
-            <option value="">Todos os meses</option>
-            <option value="01">Janeiro</option>
-            <option value="02">Fevereiro</option>
-            <option value="03">Março</option>
-            <option value="04">Abril</option>
-            <option value="05">Maio</option>
-            <option value="06">Junho</option>
-            <option value="07">Julho</option>
-            <option value="08">Agosto</option>
-            <option value="09">Setembro</option>
-            <option value="10">Outubro</option>
-            <option value="11">Novembro</option>
-            <option value="12">Dezembro</option>
-          </select>
-
-          <select id="yearFilter" onchange="syncYearFilter('history'); render();">
-            <option value="">Todos os anos</option>
-          </select>
-
-          <button type="button" class="btn-outline" onclick="resetDashDateFilters()" title="Limpar todos os filtros e exibir todos os clientes">
-            🧹 Limpar Filtros
-          </button>
-
           <button id="btnFilterToday" class="btn-outline" onclick="toggleTodayFilter()">
             🔔 Retornos de Hoje / Atrasados
           </button>
@@ -1034,11 +986,19 @@
 
         <div class="table-wrap">
           <table>
+            <colgroup>
+              <col />
+              <col />
+              <col />
+              <col class="status-column" />
+              <col />
+              <col />
+              <col class="actions-column" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Cliente & Contato</th>
                 <th>Origem / Consultor</th>
-                <th>Lotação (Trabalho)</th>
                 <th>Seguro & Banco</th>
                 <th>Status do Processo</th>
                 <th>Valor Total</th>
@@ -2332,7 +2292,7 @@
 
       const rowsEl = document.getElementById('rows');
       if (!sortedFiltered.length) {
-        rowsEl.innerHTML = '<tr><td class="empty" colspan="8">Nenhum cliente encontrado com os filtros selecionados.</td></tr>';
+        rowsEl.innerHTML = '<tr><td class="empty" colspan="7">Nenhum cliente encontrado com os filtros selecionados.</td></tr>';
         return;
       }
 
@@ -2370,18 +2330,18 @@
               <small style="color:#64748b">Sec: ${escapeHtml(c.secretaria || '-')} | Emp: ${escapeHtml(c.company || '-')}</small>
             </td>
             <td>
-              ${escapeHtml(c.location || '-')}<br>
-              <small style="color:#64748b">Bairro: ${escapeHtml(c.neighborhood || '-')}</small>
-            </td>
-            <td>
               <strong>${escapeHtml(c.insuranceType || '-')}</strong><br>
               <small style="color:#64748b">🏦 ${bankFormatted}</small>
             </td>
-            <td>
-              ${renderStatusBadge(processStatus)}
-              ${returnHtml}
-              ${receiveHtml}
-              ${carenciaHtml}
+            <td class="status-cell">
+              <div class="status-badges">
+                ${renderStatusBadge(processStatus)}
+                ${returnHtml}
+              </div>
+              <div class="status-dates">
+                ${receiveHtml}
+                ${carenciaHtml}
+              </div>
             </td>
             <td><strong style="color:var(--blue)">${money(n(c.total))}</strong></td>
             <td>
