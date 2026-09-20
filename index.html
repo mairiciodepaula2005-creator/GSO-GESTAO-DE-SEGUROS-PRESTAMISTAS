@@ -753,7 +753,7 @@
               🔔 Central de Lembretes — Mensagens nos Dias Marcados
             </h3>
             <p style="color: var(--muted); font-size: 13px; margin: 0;">
-              Clientes com retorno, recebimento ou vencimento de carência agendados para <strong>HOJE</strong>, atrasados ou nos próximos 3 dias.
+              Clientes com retorno agendado para <strong>HOJE</strong>, atrasado ou nos próximos 3 dias.
             </p>
           </div>
           <span id="reminderCountBadge" style="background: #fee2e2; color: #b91c1c; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 999px;">
@@ -1971,25 +1971,22 @@
         // Se o cliente estiver com status de FECHADO, NÃO mostra na central de lembretes!
         if (isClosedStatus(c.processStatus)) return;
 
-        const dates = [
-          { type: 'return', date: c.returnDate, title: '📅 Retorno Agendado' },
-          { type: 'receive', date: c.receiveDate, title: '💰 Recebimento Previsto' },
-          { type: 'carencia', date: c.carenciaDate, title: '⏳ Vencimento de Carência' }
-        ];
-        dates.forEach(d => {
-          if (!d.date) return;
-          const analysis = analyzeReturnDate(d.date);
-          if (!analysis) return;
-          if (analysis.diffDays <= 3) {
-            reminderItems.push({
-              client: c,
-              type: d.type,
-              title: d.title,
-              date: d.date,
-              analysis: analysis
-            });
-          }
-        });
+        // A central só considera retorno explicitamente agendado. Datas de
+        // recebimento ou carência não criam lembretes de contato por conta própria.
+        const returnDate = String(c.returnDate || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(returnDate)) return;
+        if (Number(returnDate.slice(0, 4)) < new Date().getFullYear()) return;
+
+        const analysis = analyzeReturnDate(returnDate);
+        if (analysis && analysis.diffDays <= 3) {
+          reminderItems.push({
+            client: c,
+            type: 'return',
+            title: '📅 Retorno Agendado',
+            date: returnDate,
+            analysis
+          });
+        }
       });
 
       reminderItems.sort((a, b) => a.analysis.diffDays - b.analysis.diffDays);
@@ -3112,11 +3109,12 @@
       setTimeout(() => {
         let urgentCount = 0;
         clients.forEach(c => {
-          [c.returnDate, c.receiveDate, c.carenciaDate].forEach(dStr => {
-            if (!dStr) return;
-            const a = analyzeReturnDate(dStr);
-            if (a && a.diffDays <= 0) urgentCount++;
-          });
+          if (isClosedStatus(c.processStatus)) return;
+          const returnDate = String(c.returnDate || '').trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(returnDate)) return;
+          if (Number(returnDate.slice(0, 4)) < new Date().getFullYear()) return;
+          const a = analyzeReturnDate(returnDate);
+          if (a && a.diffDays <= 0) urgentCount++;
         });
         if (urgentCount > 0) {
           toast(`🔔 Lembrete: Você possui ${urgentCount} contato(s) agendado(s) para HOJE ou ATRASADO(S)! Confira na Central de Lembretes.`);
