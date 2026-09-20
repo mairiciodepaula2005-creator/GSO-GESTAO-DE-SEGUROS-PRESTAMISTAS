@@ -1929,26 +1929,28 @@
       render();
     }
 
-    /* Popula os Selects de Anos com os Anos dos Clientes + Anos Padrão */
+    /* Popula os Selects de Anos estritamente com os anos reais (2025 e 2026) */
     function populateYearDropdowns() {
-      const currentYear = new Date().getFullYear();
-      const yearSet = new Set([
-        String(currentYear - 2),
-        String(currentYear - 1),
-        String(currentYear),
-        String(currentYear + 1),
-        String(currentYear + 2)
-      ]);
+      const yearSet = new Set(['2026', '2025']);
 
       clients.forEach(c => {
+        // Corrige se houver algum ano corrompido de importações antigas (ex: 2003 ou 2007)
+        ['receiveDate', 'closedDate', 'returnDate', 'carenciaDate'].forEach(k => {
+          if (c[k] && typeof c[k] === 'string') {
+            if (/^200\d|^201\d/.test(c[k])) {
+              c[k] = c[k].replace(/^20\d\d/, '2025');
+            }
+          }
+        });
+
         const dStr = getClientFinancialDate(c);
         if (dStr && dStr.length >= 4) {
           const y = dStr.slice(0, 4);
-          if (/^\d{4}$/.test(y)) yearSet.add(y);
+          if (/^202[4-6]$/.test(y)) yearSet.add(y);
         }
       });
 
-      const sortedYears = Array.from(yearSet).sort((a, b) => b - a);
+      const sortedYears = Array.from(yearSet).sort((a, b) => b.localeCompare(a));
 
       ['dashYearFilter', 'yearFilter'].forEach(id => {
         const el = document.getElementById(id);
