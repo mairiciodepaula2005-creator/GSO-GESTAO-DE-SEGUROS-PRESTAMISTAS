@@ -1032,7 +1032,7 @@
                 <th>Status do Processo</th>
                 <th>Valor Total</th>
                 <th>% (OBS) | A Receber</th>
-                <th>Ações</th>
+                <th style="min-width:155px;">Ações</th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -2377,8 +2377,8 @@
               <strong style="color:var(--blue)">${money(expected)}</strong><br>
               <small style="color:#64748b">${n(c.percent) > 0 ? n(c.percent) + '% sobre total' : '<span style="color:#ef4444">% não lida da OBS</span>'}</small>
             </td>
-            <td>
-              <div style="display:flex; flex-direction:column; gap:4px;">
+            <td style="min-width:155px; white-space:nowrap;">
+              <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
                 <a class="whatsapp-btn" href="${whatsappUrl(c.number)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
                   💬 Contato
                 </a>
