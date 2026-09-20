@@ -1686,8 +1686,9 @@
 
     /* Utilitário para Data Financeira / Período do Cliente */
     function getClientFinancialDate(c) {
-      if (c.receiveDate && c.receiveDate.length >= 10) return c.receiveDate.slice(0, 10);
       if (c.closedDate && c.closedDate.length >= 10) return c.closedDate.slice(0, 10);
+      if (c.receiveDate && c.receiveDate.length >= 10) return c.receiveDate.slice(0, 10);
+      if (c.sheetDate && c.sheetDate.length >= 10) return c.sheetDate.slice(0, 10);
       if (c.returnDate && c.returnDate.length >= 10) return c.returnDate.slice(0, 10);
       if (c.carenciaDate && c.carenciaDate.length >= 10) return c.carenciaDate.slice(0, 10);
       if (c.importedAt && c.importedAt.length >= 10) return c.importedAt.slice(0, 10);
@@ -1837,7 +1838,11 @@
 
     /* Extrator Inteligente de Data Combinando Coluna "DATA" + Nome da Aba */
     function parseDateWithSheetContext(rawDateVal, sheetName = '') {
-      if (typeof rawDateVal === 'number' || (/^\d{5}$/.test(String(rawDateVal || '').trim()))) {
+      if (!rawDateVal && rawDateVal !== 0) return '';
+      const str = String(rawDateVal || '').trim();
+      if (!str) return '';
+
+      if (typeof rawDateVal === 'number' || (/^\d{5}$/.test(str))) {
         const num = Number(rawDateVal);
         if (num > 20000 && num < 80000) {
           const jsDate = new Date(Math.round((num - (25567 + 2)) * 86400 * 1000));
@@ -1851,11 +1856,6 @@
       }
 
       const sheetInfo = parseSheetNameInfo(sheetName);
-      const str = String(rawDateVal || '').trim();
-
-      if (!str) {
-        return `${sheetInfo.year}-${sheetInfo.month}-${sheetInfo.startDay}`;
-      }
 
       // Se já estiver em formato YYYY-MM-DD
       if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
@@ -1885,7 +1885,7 @@
         return `${sheetInfo.year}-${sheetInfo.month}-${day}`;
       }
 
-      return `${sheetInfo.year}-${sheetInfo.month}-${sheetInfo.startDay}`;
+      return '';
     }
 
     /* Sincronização dos Filtros de Data entre Dashboard e Histórico */
@@ -1980,6 +1980,9 @@
 
       const reminderItems = [];
       clients.forEach(c => {
+        // Se o cliente estiver com status de FECHADO, NÃO mostra na central de lembretes!
+        if (isClosedStatus(c.processStatus)) return;
+
         const dates = [
           { type: 'return', date: c.returnDate, title: '📅 Retorno Agendado' },
           { type: 'receive', date: c.receiveDate, title: '💰 Recebimento Previsto' },
@@ -2751,21 +2754,27 @@
           const rawBank = String(findColumnValue(r, ['banco', 'bancos', 'banco relacionado', 'bancos relacionados', 'instituicao', 'instituicao financeira'], /banco|instituic/i) || '');
           const singleBank = rawBank.split(/[,;/]/)[0]?.trim() || '';
 
-          // Extraction of dates with sheet context fallback (coluna DATA + aba ex.: SEMANA 10 - 14 11 25)
+          // 1. Data da linha/aba (coluna DATA ou data extraída da aba)
           const rawDataCol = findColumnValue(r, ['data', 'dt', 'data do registro', 'dia', 'data registro'], /data|dia|^dt$/i);
-          const parsedSheetDate = parseDateWithSheetContext(rawDataCol, r._sheetName);
+          const parsedDataCol = parseDateWithSheetContext(rawDataCol, r._sheetName);
+          const sheetInfo = parseSheetNameInfo(r._sheetName);
+          const sheetDate = parsedDataCol || `${sheetInfo.year}-${sheetInfo.month}-${sheetInfo.startDay}`;
 
-          const rawReturnDate = findColumnValue(r, ['data de retorno', 'retorno', 'data retorno'], /retorno/i);
-          const returnDateParsed = parseDateWithSheetContext(rawReturnDate, r._sheetName) || parsedSheetDate;
+          // 2. Data de Retorno: SOMENTE se existir explicitamente na planilha (NUNCA inventa)
+          const rawReturnDate = findColumnValue(r, ['data de retorno', 'data retorno', 'retorno agendado', 'data de contato'], /retorno/i, /status|situac/i);
+          const returnDateParsed = rawReturnDate ? parseDateWithSheetContext(rawReturnDate, r._sheetName) : '';
 
-          const rawReceiveDate = findColumnValue(r, ['data que vai receber', 'data em que vai receber', 'data de recebimento', 'data recebimento', 'receber em', 'data receber'], /receb|vai.*receb/i) || (rawDataCol ? parsedSheetDate : '');
-          const receiveDateParsed = parseDateWithSheetContext(rawReceiveDate, r._sheetName) || parsedSheetDate;
+          // 3. Data de Recebimento: SOMENTE se existir explicitamente na planilha
+          const rawReceiveDate = findColumnValue(r, ['data que vai receber', 'data em que vai receber', 'data de recebimento', 'data recebimento', 'receber em', 'data receber'], /receb|vai.*receb/i);
+          const receiveDateParsed = rawReceiveDate ? parseDateWithSheetContext(rawReceiveDate, r._sheetName) : '';
 
+          // 4. Data de Carência: SOMENTE se existir explicitamente na planilha
           const rawCarenciaDate = findColumnValue(r, ['vencimento da carencia', 'data que a carencia vence', 'vencimento carencia', 'data carencia', 'carencia vence'], /carencia/i);
-          const carenciaDateParsed = parseDateWithSheetContext(rawCarenciaDate, r._sheetName);
+          const carenciaDateParsed = rawCarenciaDate ? parseDateWithSheetContext(rawCarenciaDate, r._sheetName) : '';
 
+          // 5. Data de Fechamento: SOMENTE se existir explicitamente na planilha
           const rawClosedDate = findColumnValue(r, ['data de fechamento', 'fechamento'], /fechamento/i);
-          const closedDateParsed = parseDateWithSheetContext(rawClosedDate, r._sheetName);
+          const closedDateParsed = rawClosedDate ? parseDateWithSheetContext(rawClosedDate, r._sheetName) : '';
 
           return {
             name: String(nameVal).trim(),
@@ -2784,6 +2793,7 @@
             receiveDate: receiveDateParsed,
             carenciaDate: carenciaDateParsed,
             closedDate: closedDateParsed,
+            sheetDate: sheetDate,
             paidBefore: String(findColumnValue(r, ['pago antes', 'foi pago antes'], /pago.*antes/i)).trim() || 'Não',
             bank: singleBank,
             total: n(totalVal),
