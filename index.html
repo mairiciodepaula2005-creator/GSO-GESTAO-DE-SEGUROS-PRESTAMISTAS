@@ -103,6 +103,8 @@
       color: var(--blue);
       box-shadow: inset 0 -3px 0 var(--blue);
     }
+    .tab-icon { width: 20px; text-align: center; font-size: 16px; }
+    .sidebar-label { display: inline; }
     .view { display: none; }
     .view.active { display: block; animation: fadeIn 0.2s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
@@ -164,6 +166,16 @@
     .metric.received strong { color: var(--aqua); }
     .metric.total-insurance::before { background: #6366f1; }
     .metric.total-insurance strong { color: #4338ca; }
+    .metric.pending::before { background: var(--warning); }
+    .metric.pending strong { color: #b45309; }
+    .metric.urgent::before { background: var(--danger); }
+    .metric.urgent strong { color: var(--danger); }
+    .metric.closed::before { background: var(--success); }
+    .metric.closed strong { color: var(--success); }
+
+    .process-radar { margin-bottom: 26px; }
+    .process-radar h3 { margin: 0 0 12px; font-size: 16px; color: var(--navy); }
+    .radar-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 
     /* Panels & Form */
     .panel {
@@ -477,6 +489,32 @@
     }
     .whatsapp-reminder-btn:hover { filter: brightness(1.08); color: #fff; }
 
+    /* Central de lembretes: informações importantes em colunas fixas */
+    .reminder-row {
+      display: grid;
+      grid-template-columns: minmax(155px, 1.45fr) minmax(145px, 1.35fr) minmax(125px, 1fr) minmax(125px, 1fr) minmax(115px, .9fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 18px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .reminder-field { min-width: 0; }
+    .reminder-field-label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .45px;
+      text-transform: uppercase;
+    }
+    .reminder-client-name { color: var(--ink); font-size: 14px; font-weight: 800; overflow-wrap: anywhere; }
+    .reminder-field-value { color: #475569; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+    .reminder-row .return-badge { margin: 0; }
+
     /* Coluna de ações: mantém os botões completos, inclusive em telas estreitas. */
     th.actions-column,
     td.actions-cell,
@@ -602,6 +640,7 @@
     /* Responsive */
     @media (max-width: 900px) {
       .summary { grid-template-columns: 1fr 1fr; }
+      .radar-cards { grid-template-columns: 1fr; }
     }
     @media (max-width: 650px) {
       .summary { grid-template-columns: 1fr; }
@@ -610,6 +649,49 @@
       .modal-actions { flex-direction: column; align-items: stretch; }
       .tools input, .tools select { width: 100%; }
       .tabs { overflow-x: auto; }
+      .table-wrap { overflow-x: auto; }
+      table { min-width: 620px; }
+      .reminder-row { grid-template-columns: 1fr 1fr; }
+      .reminder-row .whatsapp-btn { grid-column: 1 / -1; width: 100%; }
+    }
+    @media (min-width: 901px) {
+      .container {
+        width: calc(100vw - 250px);
+        max-width: none;
+        margin: 22px 22px 60px 228px;
+      }
+      .tabs {
+        position: fixed;
+        z-index: 20;
+        top: 88px;
+        left: 14px;
+        width: 196px;
+        flex-direction: column;
+        gap: 5px;
+        padding: 14px 10px;
+        margin: 0;
+        border: 1px solid var(--line-light);
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: var(--shadow);
+      }
+      .tabs::before {
+        content: 'NAVEGAÇÃO';
+        padding: 3px 10px 8px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1px;
+      }
+      .tab {
+        width: 100%;
+        justify-content: flex-start;
+        padding: 11px 12px;
+        border-radius: 8px;
+        text-align: left;
+      }
+      .tab.active { box-shadow: inset 3px 0 0 var(--blue); }
+      .sidebar-label { display: inline; }
     }
   </style>
 </head>
@@ -635,9 +717,9 @@
     </section>
 
     <nav class="tabs" aria-label="Navegação principal">
-      <button class="tab active" data-tab="dashboard" onclick="openTab('dashboard')">Dashboard</button>
-      <button class="tab" data-tab="register" onclick="openTab('register')">Cadastro do cliente</button>
-      <button class="tab" data-tab="history" onclick="openTab('history')">Histórico e planilhas</button>
+      <button class="tab active" data-tab="dashboard" onclick="openTab('dashboard')"><span class="tab-icon">▦</span><span class="sidebar-label">Dashboard</span></button>
+      <button class="tab" data-tab="register" onclick="openTab('register')"><span class="tab-icon">＋</span><span class="sidebar-label">Novo cliente</span></button>
+      <button class="tab" data-tab="history" onclick="openTab('history')"><span class="tab-icon">⌕</span><span class="sidebar-label">Clientes e histórico</span></button>
     </nav>
 
     <!-- Dashboard -->
@@ -743,6 +825,24 @@
           <div class="label">Lucro / Comissão Fechada</div>
           <strong id="received">R$ 0,00</strong>
         </article>
+      </section>
+
+      <section class="process-radar">
+        <h3>Radar de acompanhamento</h3>
+        <div class="radar-cards">
+          <article class="metric pending">
+            <div class="label">Em acompanhamento</div>
+            <strong id="pendingClients">0</strong>
+          </article>
+          <article class="metric urgent">
+            <div class="label">Retornos hoje / atrasados</div>
+            <strong id="urgentClients">0</strong>
+          </article>
+          <article class="metric closed">
+            <div class="label">Processos fechados</div>
+            <strong id="closedClients">0</strong>
+          </article>
+        </div>
       </section>
 
       <!-- Central de Lembretes dos Dias Marcados -->
@@ -2012,24 +2112,31 @@
         const waUrl = whatsappUrl(item.client.number, msg);
 
         return `
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:14px 18px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-            <div style="display:flex; flex-direction:column; gap:4px;">
-              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <strong style="font-size:15px; color:var(--ink);">${escapeHtml(item.client.name)}</strong>
-                ${renderStatusBadge(item.client.processStatus)}
-                <span class="return-badge ${item.analysis.class}">${item.analysis.label}</span>
-              </div>
-              <div style="font-size:13px; color:#475569; display:flex; gap:14px; flex-wrap:wrap; margin-top:2px;">
-                <span>📌 <strong>${item.title}:</strong> ${formatDateBR(item.date)}</span>
-                <span>📞 ${escapeHtml(item.client.number || 'Sem telefone')}</span>
-                <span>🏦 ${escapeHtml(item.client.bank || 'Não informado')}</span>
-              </div>
+          <div class="reminder-row">
+            <div class="reminder-field">
+              <span class="reminder-field-label">Cliente</span>
+              <div class="reminder-client-name">${escapeHtml(item.client.name)}</div>
             </div>
-            <div>
-              <a class="whatsapp-btn" href="${waUrl}" target="_blank" rel="noopener" style="padding:8px 14px; font-size:13px; font-weight:700;">
-                💬 Enviar Mensagem WhatsApp
-              </a>
+            <div class="reminder-field">
+              <span class="reminder-field-label">Status</span>
+              ${renderStatusBadge(item.client.processStatus)}
             </div>
+            <div class="reminder-field">
+              <span class="reminder-field-label">Retorno</span>
+              <div class="reminder-field-value">📅 ${formatDateBR(item.date)}</div>
+              <span class="return-badge ${item.analysis.class}">${item.analysis.label}</span>
+            </div>
+            <div class="reminder-field">
+              <span class="reminder-field-label">Telefone</span>
+              <div class="reminder-field-value">📞 ${escapeHtml(item.client.number || 'Sem telefone')}</div>
+            </div>
+            <div class="reminder-field">
+              <span class="reminder-field-label">Banco</span>
+              <div class="reminder-field-value">🏦 ${escapeHtml(item.client.bank || 'Não informado')}</div>
+            </div>
+            <a class="whatsapp-btn" href="${waUrl}" target="_blank" rel="noopener" style="padding:8px 14px; font-size:13px; font-weight:700;">
+              💬 WhatsApp
+            </a>
           </div>
         `;
       }).join('');
@@ -2241,6 +2348,13 @@
       document.getElementById('totalInsurance').textContent = money(totalInsuranceSum);
       document.getElementById('toReceive').textContent = money(toReceiveSum);
       document.getElementById('received').textContent = money(paidSum);
+      document.getElementById('pendingClients').textContent = dashFiltered.filter(c => !isClosedStatus(c.processStatus)).length;
+      document.getElementById('closedClients').textContent = dashFiltered.filter(c => isClosedStatus(c.processStatus)).length;
+      document.getElementById('urgentClients').textContent = dashFiltered.filter(c => {
+        if (isClosedStatus(c.processStatus) || !c.returnDate) return false;
+        const analysis = analyzeReturnDate(c.returnDate);
+        return analysis && analysis.diffDays <= 0;
+      }).length;
 
       // Renderiza a Central de Lembretes dos Dias Marcados
       renderReminders();
