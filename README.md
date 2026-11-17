@@ -1,5 +1,9 @@
 # GSP — Gestão de Seguros Prestamista
 
+> Preparação local de acesso protegido em andamento. Consulte
+> [CONFIGURACAO_FIREBASE.md](CONFIGURACAO_FIREBASE.md) antes de publicar.
+> A conta proprietária já está configurada; confira no documento o estado da aplicação das regras remotas.
+
 Sistema web moderno, rápido e 100% responsivo para controle, gestão e acompanhamento de resgates de seguros prestamistas, comissões, parceiros e agendamento de retornos.
 
 ---
@@ -36,7 +40,9 @@ Sistema web moderno, rápido e 100% responsivo para controle, gestão e acompanh
 
 ## 🚀 Como Executar Localmente
 
-Basta abrir o arquivo [`index.html`](index.html) em qualquer navegador moderno (Google Chrome, Microsoft Edge, Firefox, Brave, etc.). Não é necessário instalar Node.js, banco de dados ou servidores.
+Esta versão exige um domínio HTTP(S) autorizado no Firebase Authentication e
+configuração do proprietário. Abrir `index.html` por `file://` não é um teste de
+login válido. O site continua estático, sem necessidade de servidor de aplicação.
 
 ---
 
@@ -45,7 +51,7 @@ Basta abrir o arquivo [`index.html`](index.html) em qualquer navegador moderno (
 Para ter um link público na internet (ex.: `https://seu-usuario.github.io/seu-repositorio`):
 
 1. Crie um repositório no seu [GitHub](https://github.com/new).
-2. Envie os arquivos desta pasta (`index.html`, `README.md`, etc.).
+2. Envie juntos `index.html`, `gsp-access.js` e `gsp-sync.js`, após concluir a configuração descrita acima. Não envie contatos, prévias JSON ou backups de clientes a um repositório público.
 3. No repositório, clique na aba **Settings** (Configurações).
 4. No menu lateral esquerdo, clique em **Pages**.
 5. Em **Branch**, selecione `main` (ou `master`) e a pasta `/(root)`.

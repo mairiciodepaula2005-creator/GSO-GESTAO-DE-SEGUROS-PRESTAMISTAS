@@ -8,6 +8,9 @@
   <!-- Firebase SDKs (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="gsp-access.js"></script>
+  <script src="gsp-sync.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics-compat.js"></script>
   <style>
     :root {
@@ -696,6 +699,14 @@
   </style>
 </head>
 <body>
+  <section id="accessPanel" class="panel" role="status" aria-live="polite" style="position:fixed;inset:0;z-index:10000;display:grid;place-content:center;gap:16px;padding:24px;text-align:center;background:var(--bg);">
+    <h2>GSP — Acesso protegido</h2>
+    <p id="accessMessage">Verificando sua sessão…</p>
+    <button id="googleLogin" class="primary" type="button" onclick="loginGoogle()">Entrar com Google</button>
+    <button id="reloadCloud" class="secondary" type="button" onclick="loadCloud()" hidden>Recarregar dados da nuvem</button>
+    <button id="downloadDraft" class="secondary" type="button" onclick="downloadUnsavedDraft()" hidden>Baixar tentativa não salva</button>
+    <button class="clear" type="button" onclick="logoutGoogle()">Sair da conta</button>
+  </section>
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark">GSP</div>
@@ -704,10 +715,10 @@
         <span>Gestão de Seguros Prestamista</span>
       </div>
     </div>
-    <div class="topbar-date" id="date"></div>
+    <div class="topbar-date"><span id="date"></span> <button class="clear" type="button" onclick="logoutGoogle()">Sair</button></div>
   </header>
 
-  <main class="container">
+  <main class="container" inert>
     <section class="intro">
       <div>
         <h2 id="pageTitle">Dashboard</h2>
@@ -1339,7 +1350,9 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    firebase.analytics();
+    const auth = firebase.auth();
+    // Falha de Analytics não deve impedir login nem salvamento.
+    try { firebase.analytics(); } catch (err) { console.warn('Analytics indisponível.'); }
     const RTDB_REF = db.ref('gsp');   // raiz: /gsp/
 
     /* Indicador de sincronização */
@@ -1348,12 +1361,20 @@
       if (!el) return;
       if (status === 'saving') { el.textContent = '☁️ Salvando...';               el.style.color = '#f59e0b'; }
       else if (status === 'ok')  { el.textContent = '✅ Sincronizado';             el.style.color = '#22c55e'; }
-      else if (status === 'err') { el.textContent = '⚠️ Sem conexão (local)';     el.style.color = '#ef4444'; }
+      else if (status === 'err') { el.textContent = '⚠️ Não salvo na nuvem';     el.style.color = '#ef4444'; }
     }
     /* ──────────────────────────────────────────────────────────── */
 
     const KEY = 'gsp-client-history-v1';
-    let clients = JSON.parse(localStorage.getItem(KEY) || '[]'); // fallback offline
+    let clients = []; // Só exibe dados após autenticação e leitura autorizada.
+    let cloudReady = false;
+    let cloudBusy = false;
+    let connected = false;
+    let sessionVersion = 0;
+    let unsavedDraft = null;
+    const stagedOptions = {};
+    const isOwner = () => Boolean(window.GSP_ACCESS?.ownerEmail && auth.currentUser && auth.currentUser.emailVerified && auth.currentUser.email?.toLowerCase() === window.GSP_ACCESS.ownerEmail.toLowerCase() && auth.currentUser.providerData.some(p => p.providerId === 'google.com'));
+    const sync = new GspSync(RTDB_REF, isOwner);
     let openClientIndex = -1;
     let onlyTodayFilter = false;
     let previousStateBeforeImport = null;
@@ -1384,7 +1405,9 @@
     };
 
     function getDynamicList(key) {
-      const stored = localStorage.getItem('gsp_opt_' + key);
+      if (stagedOptions[key]) return [...stagedOptions[key]];
+      let stored = null;
+      try { stored = localStorage.getItem('gsp_opt_' + key); } catch (err) {}
       let list = [...DEFAULT_OPTIONS[key]];
       if (stored) {
         try {
@@ -1401,10 +1424,8 @@
     }
 
     function saveDynamicList(key, list) {
-      localStorage.setItem('gsp_opt_' + key, JSON.stringify(list));
-      // Sincroniza opções no Realtime Database
-      RTDB_REF.child('options').child(key).set(list)
-        .catch(err => console.error('[RTDB] Erro ao salvar opção "' + key + '":', err));
+      stagedOptions[key] = [...list];
+      try { localStorage.setItem('gsp_opt_' + key, JSON.stringify(list)); } catch (err) {}
     }
 
     function populateDropdowns() {
@@ -1440,7 +1461,8 @@
       });
     }
 
-    function addNewOption(listKey, selectId, labelPrompt) {
+    async function addNewOption(listKey, selectId, labelPrompt) {
+      if (!canEdit()) return;
       const newVal = prompt(`Digite o nome do ${labelPrompt} para cadastrar:`);
       if (!newVal || !newVal.trim()) return;
       const cleanVal = newVal.trim().toUpperCase();
@@ -1449,6 +1471,7 @@
       if (!list.includes(cleanVal)) {
         list.push(cleanVal);
         saveDynamicList(listKey, list);
+        if (!await persist()) return;
         populateDropdowns();
         toast(`${cleanVal} cadastrado com sucesso!`);
       }
@@ -1653,6 +1676,7 @@
           item.textContent = bank;
           item.onmousedown = (e) => {
             e.preventDefault();
+            if (!canEdit()) return;
             selectSingleBank(type, bank);
           };
           options.append(item);
@@ -2012,15 +2036,7 @@
       const yearSet = new Set(['2026', '2025']);
 
       clients.forEach(c => {
-        // Corrige se houver algum ano corrompido de importações antigas (ex: 2003 ou 2007)
-        ['receiveDate', 'closedDate', 'returnDate', 'carenciaDate'].forEach(k => {
-          if (c[k] && typeof c[k] === 'string') {
-            if (/^200\d|^201\d/.test(c[k])) {
-              c[k] = c[k].replace(/^20\d\d/, '2025');
-            }
-          }
-        });
-
+        // Renderizar filtros nunca deve modificar datas dos registros existentes.
         const dStr = getClientFinancialDate(c);
         if (dStr && dStr.length >= 4) {
           const y = dStr.slice(0, 4);
@@ -2142,20 +2158,122 @@
       }).join('');
     }
 
-    function persist() {
-      // 1. Cache local (funciona offline)
-      localStorage.setItem(KEY, JSON.stringify(clients));
-      // 2. Nuvem — Realtime Database
+    function canEdit() {
+      if (cloudReady && !cloudBusy && connected && isOwner()) return true;
+      toast('Entre e carregue os dados da nuvem antes de alterar.');
+      return false;
+    }
+
+    function accessState(message) {
+      const locked = !cloudReady || cloudBusy || !connected || !isOwner();
+      document.getElementById('accessPanel').style.display = locked ? 'grid' : 'none';
+      document.querySelector('main').inert = locked;
+      document.querySelectorAll('.modal-backdrop').forEach(el => { el.inert = locked; });
+      if (message) document.getElementById('accessMessage').textContent = message;
+      document.getElementById('googleLogin').hidden = Boolean(auth.currentUser) || cloudBusy;
+      document.getElementById('reloadCloud').hidden = !isOwner() || cloudBusy;
+      document.getElementById('downloadDraft').hidden = !unsavedDraft || !isOwner() || cloudBusy;
+    }
+
+    function downloadUnsavedDraft() {
+      if (!isOwner() || !unsavedDraft) return;
+      const blob = new Blob([JSON.stringify(unsavedDraft, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'gsp-tentativa-nao-salva.json';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function persist() {
+      if (!canEdit()) return false;
+      cloudBusy = true;
       setSyncStatus('saving');
-      RTDB_REF.child('clients').set(clients)
-        .then(() => {
-          setSyncStatus('ok');
-          console.log('[RTDB] Clientes salvos com sucesso. Total:', clients.length);
-        })
-        .catch(err => {
-          setSyncStatus('err');
-          console.error('[RTDB] Erro ao salvar clientes:', err.code, err.message);
+      accessState('Salvando na nuvem. Aguarde a confirmação antes de fechar.');
+      const options = Object.fromEntries(Object.keys(DEFAULT_OPTIONS).map(k => [k, getDynamicList(k)]));
+      unsavedDraft = { clientes: JSON.parse(JSON.stringify(clients)), opcoesPersonalizadas: options };
+      try {
+        await sync.save(clients, options);
+        // Cache novo é separado por conta; o cache legado permanece intacto.
+        try { localStorage.setItem(KEY + ':' + auth.currentUser.uid, JSON.stringify(clients)); } catch (err) {}
+        unsavedDraft = null;
+        setSyncStatus('ok');
+        return true;
+      } catch (err) {
+        cloudReady = false;
+        setSyncStatus('err');
+        document.getElementById('accessMessage').textContent = 'Alteração não confirmada: ' + (err.message || 'verifique conexão e permissão.');
+        return false;
+      } finally {
+        cloudBusy = false;
+        accessState();
+      }
+    }
+
+    async function loginGoogle() {
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+        await auth.signInWithPopup(provider);
+      } catch (err) {
+        const messages = {
+          'auth/unauthorized-domain': 'Este domínio precisa ser autorizado em Firebase Authentication.',
+          'auth/operation-not-allowed': 'O login Google precisa ser ativado em Firebase Authentication.',
+          'auth/popup-blocked': 'Permita a janela de login do Google e tente novamente.',
+          'auth/popup-closed-by-user': 'Login cancelado. Clique em Entrar com Google para tentar novamente.'
+        };
+        accessState(messages[err.code] || 'Não foi possível entrar. Tente novamente.');
+      }
+    }
+
+    async function logoutGoogle() {
+      if (cloudBusy) return;
+      if (unsavedDraft && !confirm('Há uma tentativa não salva. Baixe-a antes de sair. Deseja sair mesmo assim?')) return;
+      try { await auth.signOut(); } catch (err) { accessState('Não foi possível sair. Tente novamente.'); }
+    }
+
+    async function loadCloud() {
+      if (!isOwner() || cloudBusy) return;
+      if (unsavedDraft && !confirm('Recarregar substituirá a tentativa não salva na tela. Baixe-a primeiro. Deseja continuar?')) return;
+      const version = sessionVersion;
+      cloudReady = false;
+      cloudBusy = true;
+      accessState('Carregando os dados da nuvem…');
+      try {
+        const data = await sync.load();
+        if (version !== sessionVersion || !isOwner()) return;
+        const raw = data.clients;
+        if (raw != null && typeof raw !== 'object') throw new Error('Formato inesperado no banco. Nenhum dado foi alterado.');
+        clients = raw ? (Array.isArray(raw) ? raw : Object.values(raw)).filter(Boolean) : [];
+        if (clients.some(c => !c || typeof c !== 'object' || Array.isArray(c))) throw new Error('Formato inesperado de cliente. Nenhum dado foi alterado.');
+        Object.keys(DEFAULT_OPTIONS).forEach(k => {
+          const remote = data.options?.[k];
+          stagedOptions[k] = [...(Array.isArray(remote) ? remote : DEFAULT_OPTIONS[k])];
+          try { localStorage.setItem('gsp_opt_' + k, JSON.stringify(stagedOptions[k])); } catch (err) {}
         });
+        previousStateBeforeImport = null;
+        unsavedDraft = null;
+        closeDetails();
+        closeDeleteModal();
+        document.getElementById('btnUndoImport').style.display = 'none';
+        populateDropdowns();
+        render();
+        cloudReady = true;
+        setSyncStatus('ok');
+        // Leitura inicial nunca grava, mesmo quando o banco está vazio.
+      } catch (err) {
+        if (version !== sessionVersion) return;
+        cloudReady = false;
+        setSyncStatus('err');
+        accessState('Não foi possível carregar: ' + (err.code === 'PERMISSION_DENIED' ? 'conta sem permissão nas regras do banco.' : err.message));
+      } finally {
+        if (version === sessionVersion) {
+          cloudBusy = false;
+          accessState();
+        }
+      }
     }
 
     function toast(t) {
@@ -2595,8 +2713,9 @@
       showDetails(openClientIndex);
     }
 
-    document.getElementById('editForm').addEventListener('submit', e => {
+    document.getElementById('editForm').addEventListener('submit', async e => {
       e.preventDefault();
+      if (!canEdit()) return;
       const c = clients[openClientIndex];
       if (!c) return;
 
@@ -2633,16 +2752,17 @@
         paid: n(val('editPaid'))
       });
 
-      persist();
+      if (!await persist()) return;
       render();
       cancelEdit();
       toast('Dados do cliente atualizados com sucesso.');
     });
 
-    function removeClient(i) {
+    async function removeClient(i) {
+      if (!canEdit()) return;
       if (confirm('Tem certeza que deseja excluir este cliente do histórico?')) {
         clients.splice(i, 1);
-        persist();
+        if (!await persist()) return;
         render();
         closeDetails();
         toast('Cadastro excluído do histórico.');
@@ -2689,8 +2809,9 @@
     }
 
     /* Submissão do Formulário de Cadastro */
-    document.getElementById('clientForm').addEventListener('submit', e => {
+    document.getElementById('clientForm').addEventListener('submit', async e => {
       e.preventDefault();
+      if (!canEdit()) return;
       const pStatus = val('processStatus') || 'AGUARDANDO RETORNO';
       const norm = normalize(pStatus);
       const isFechado = norm.includes('fechado') && !norm.includes('nao fechado');
@@ -2727,7 +2848,7 @@
       };
 
       clients.unshift(newClient);
-      persist();
+      if (!await persist()) return;
       e.target.reset();
       resetRegisterForm();
       render();
@@ -2792,6 +2913,7 @@
 
     /* Importação de Planilhas (Excel e CSV) */
     document.getElementById('fileInput').addEventListener('change', async e => {
+      if (!canEdit()) { e.target.value = ''; return; }
       const file = e.target.files[0];
       if (!file) return;
 
@@ -2910,9 +3032,10 @@
         if (!imported.length) throw new Error('Nenhum cliente válido com nome foi identificado na planilha.');
 
         // Salva cópia de segurança antes de adicionar a nova planilha
+        if (!canEdit()) return;
         previousStateBeforeImport = JSON.parse(JSON.stringify(clients));
         clients = [...imported, ...clients];
-        persist();
+        if (!await persist()) return;
         render();
 
         const undoBtn = document.getElementById('btnUndoImport');
@@ -3006,11 +3129,13 @@
     }
 
     function importBackup(event) {
+      if (!canEdit()) { event.target.value = ''; return; }
       const file = event.target.files[0];
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = evt => {
+      reader.onload = async evt => {
+        if (!canEdit()) return;
         try {
           const parsed = JSON.parse(evt.target.result);
           const list = Array.isArray(parsed) ? parsed : (parsed.clientes || parsed.clients || []);
@@ -3029,7 +3154,7 @@
             }
 
             clients = [...list, ...clients];
-            persist();
+            if (!await persist()) return;
             render();
             toast(`${list.length} clientes restaurados com sucesso!`);
           }
@@ -3043,12 +3168,13 @@
     }
 
     /* Desfazer última importação */
-    function undoLastImport() {
+    async function undoLastImport() {
+      if (!canEdit()) return;
       if (!previousStateBeforeImport) return toast('Nenhuma importação recente para desfazer.');
       if (confirm('Deseja realmente desfazer a última planilha importada e restaurar a lista anterior de clientes?')) {
         clients = [...previousStateBeforeImport];
         previousStateBeforeImport = null;
-        persist();
+        if (!await persist()) return;
         render();
         const undoBtn = document.getElementById('btnUndoImport');
         if (undoBtn) undoBtn.style.display = 'none';
@@ -3057,7 +3183,8 @@
     }
 
     /* Exclusão rápida de todos os dados com confirmação */
-    function clearAllData() {
+    async function clearAllData() {
+      if (!canEdit()) return;
       if (!clients.length) {
         return toast('Não há nenhum cliente cadastrado para excluir.');
       }
@@ -3071,7 +3198,7 @@
 
       clients = [];
       previousStateBeforeImport = null;
-      persist();
+      if (!await persist()) return;
       render();
 
       const undoBtn = document.getElementById('btnUndoImport');
@@ -3129,8 +3256,9 @@
       if (selStatus) selStatus.disabled = scope !== 'by_status';
     }
 
-    function executeDeleteChoice(event) {
+    async function executeDeleteChoice(event) {
       event.preventDefault();
+      if (!canEdit()) return;
       const scope = document.querySelector('input[name="deleteScope"]:checked')?.value;
       let removed = 0;
 
@@ -3163,77 +3291,42 @@
         if (undoBtn) undoBtn.style.display = 'none';
       }
 
-      persist();
+      if (!await persist()) return;
       render();
       closeDeleteModal();
       toast(`✅ ${removed} cliente(s) excluído(s) com sucesso.`);
     }
 
-    /* Inicialização — carrega do Realtime Database, fallback para localStorage */
-    async function init() {
+    /* Inicialização: autenticação antes de qualquer leitura de clientes. */
+    function init() {
       populateDropdowns();
       toggleSharedFields('register');
       document.getElementById('date').textContent = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(new Date());
-
-      // Renderiza imediatamente com os dados locais do localStorage
-      render();
-
-      try {
-        setSyncStatus('saving');
-
-        // 1. Lê dados de clientes do Firebase (uma única vez)
-        const clientsSnap = await RTDB_REF.child('clients').once('value');
-        const rawClients = clientsSnap.val();
-
-        if (rawClients) {
-          const cloudClients = Array.isArray(rawClients) ? rawClients : Object.values(rawClients);
-          if (cloudClients.length > 0) {
-            clients = cloudClients;
-            localStorage.setItem(KEY, JSON.stringify(clients));
-            console.log('[RTDB] Clientes carregados da nuvem. Total:', clients.length);
-            render();
-          }
-        } else if (clients.length > 0) {
-          // Firebase vazio mas temos dados locais — envia para a nuvem
-          await RTDB_REF.child('clients').set(clients);
-          console.log('[RTDB] Dados locais enviados para a nuvem. Total:', clients.length);
-        }
-
-        // 2. Carrega opções dinâmicas
-        const optionsSnap = await RTDB_REF.child('options').once('value');
-        const optData = optionsSnap.val();
-        if (optData) {
-          Object.keys(optData).forEach(key => {
-            if (DEFAULT_OPTIONS[key] && Array.isArray(optData[key])) {
-              localStorage.setItem('gsp_opt_' + key, JSON.stringify(optData[key]));
-            }
-          });
-          populateDropdowns();
-        }
-
-        setSyncStatus('ok');
-      } catch (err) {
-        setSyncStatus('err');
-        console.error('[RTDB] Falha ao carregar dados:', err.code, err.message);
-        // Mesmo com erro, garante que os dados locais são mostrados
+      accessState('Entre com a conta Google autorizada.');
+      db.ref('.info/connected').on('value', snap => {
+        connected = snap.val() === true;
+        if (!connected && isOwner() && !cloudBusy) accessState('Sem conexão. Reconecte e recarregue os dados da nuvem.');
+        else accessState();
+      });
+      window.addEventListener('beforeunload', e => {
+        if (cloudBusy || unsavedDraft) { e.preventDefault(); e.returnValue = ''; }
+      });
+      auth.onAuthStateChanged(async user => {
+        sessionVersion++;
+        cloudReady = false;
+        cloudBusy = false;
+        sync.loaded = false;
+        clients = [];
+        unsavedDraft = null;
+        previousStateBeforeImport = null;
+        closeDetails();
+        closeDeleteModal();
         render();
-      }
-
-      // Alerta automático de agendamentos no dia marcado / atrasados
-      setTimeout(() => {
-        let urgentCount = 0;
-        clients.forEach(c => {
-          if (isClosedStatus(c.processStatus)) return;
-          const returnDate = String(c.returnDate || '').trim();
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(returnDate)) return;
-          if (Number(returnDate.slice(0, 4)) < new Date().getFullYear()) return;
-          const a = analyzeReturnDate(returnDate);
-          if (a && a.diffDays <= 0) urgentCount++;
-        });
-        if (urgentCount > 0) {
-          toast(`🔔 Lembrete: Você possui ${urgentCount} contato(s) agendado(s) para HOJE ou ATRASADO(S)! Confira na Central de Lembretes.`);
-        }
-      }, 1200);
+        if (!user) return accessState('Entre com a conta Google autorizada.');
+        if (!window.GSP_ACCESS?.ownerEmail) return accessState('A configuração de acesso do proprietário ainda não foi concluída.');
+        if (!isOwner()) return accessState('Esta conta não tem acesso. Saia e entre com a conta autorizada.');
+        await loadCloud();
+      });
     }
 
     init();

@@ -7,3 +7,10 @@ Desktop.ini
 *.tmp
 *.bak
 ~$*.xlsx
+
+# Dados pessoais e cópias de segurança (não publicar)
+backups/
+phone_join_preview.json
+phone_join_summary.json
+backup-gsp-*.json
+gsp-tentativa-nao-salva.json
